@@ -59,7 +59,11 @@ describe("workshop database workflows", () => {
   beforeAll(async () => {
     db = new PGlite();
     await db.exec(
-      "create role anon; create role authenticated; create role service_role bypassrls; create schema auth; grant usage on schema auth to anon,authenticated; create function auth.uid() returns uuid language sql stable as $$ select current_setting('request.jwt.claim.sub',true)::uuid $$; create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz); create schema storage; create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);",
+      "create role anon; create role authenticated; create role service_role bypassrls; create schema auth; grant usage on schema auth to anon,authenticated; create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$; create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz); create schema storage; create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);",
+    );
+    // Supabase grants new public tables to browser roles unless explicitly revoked.
+    await db.exec(
+      "alter default privileges in schema public grant all on tables to anon,authenticated,service_role",
     );
     const dir = path.resolve("supabase/migrations");
     for (const file of (await readdir(dir))
@@ -129,6 +133,13 @@ describe("workshop database workflows", () => {
   afterAll(async () => {
     await db?.close();
   });
+  it("returns null for unset or empty subject claims and preserves valid UUIDs", async () => {
+    expect(await scalar("select auth.uid()")).toBeNull();
+    await db.query("select set_config('request.jwt.claim.sub','',true)");
+    expect(await scalar("select auth.uid()")).toBeNull();
+    await db.query("select set_config('request.jwt.claim.sub',$1,true)", [id(3)]);
+    expect(await scalar("select auth.uid()")).toBe(id(3));
+  });
   it("keeps operational table access server-only for every CRUD operation", async () => {
     for (const table of [
       "bookings",
@@ -142,6 +153,20 @@ describe("workshop database workflows", () => {
       "staff_invitations",
       "audit_logs",
       "vehicle_history_shares",
+      "franchises",
+      "invoice_lines",
+      "job_stages",
+      "notifications",
+      "plans",
+      "push_devices",
+      "repair_tasks",
+      "repair_photos",
+      "repair_quotes",
+      "repair_quote_lines",
+      "job_part_movements",
+      "workshop_bays",
+      "workshop_slots",
+      "maintenance_reminders",
     ]) {
       for (const operation of ["SELECT", "INSERT", "UPDATE", "DELETE"]) {
         for (const role of ["anon", "authenticated", "service_role"]) {
@@ -162,6 +187,23 @@ describe("workshop database workflows", () => {
         ),
       ).toBe(true);
     }
+  });
+  it("preserves owner-scoped vehicle access without exposing another owner's vehicles", async () => {
+    await db.query("select set_config('request.jwt.claim.sub',$1,true)", [id(2)]);
+    await db.exec("set local role authenticated");
+    expect(await scalar("select id from vehicles")).toBe(id(30));
+    await db.query("update vehicles set mileage_km=11000 where id=$1", [id(30)]);
+    expect(await scalar("select mileage_km from vehicles")).toBe(11000);
+    await fails(
+      "update vehicles set owner_id=$1 where id=$2",
+      [id(3), id(30)],
+      "violates row-level security policy",
+    );
+    await db.query("select set_config('request.jwt.claim.sub',$1,true)", [id(3)]);
+    expect(await scalar("select count(*) from vehicles")).toBe(0);
+    expect(
+      (await db.query("update vehicles set mileage_km=1 where id=$1 returning id", [id(30)])).rows,
+    ).toEqual([]);
   });
   it.each([
     {
