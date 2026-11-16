@@ -59,7 +59,7 @@ describe("workshop database workflows", () => {
   beforeAll(async () => {
     db = new PGlite();
     await db.exec(
-      "create role anon; create role authenticated; create role service_role bypassrls; create schema auth; create function auth.uid() returns uuid language sql stable as $$ select null::uuid $$; create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz); create schema storage; create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);",
+      "create role anon; create role authenticated; create role service_role bypassrls; create schema auth; grant usage on schema auth to anon,authenticated; create function auth.uid() returns uuid language sql stable as $$ select current_setting('request.jwt.claim.sub',true)::uuid $$; create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz); create schema storage; create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);",
     );
     const dir = path.resolve("supabase/migrations");
     for (const file of (await readdir(dir))
@@ -128,6 +128,171 @@ describe("workshop database workflows", () => {
   });
   afterAll(async () => {
     await db?.close();
+  });
+  it("keeps operational table access server-only for every CRUD operation", async () => {
+    for (const table of [
+      "bookings",
+      "jobs",
+      "invoices",
+      "inventory_items",
+      "service_catalog",
+      "shops",
+      "payments",
+      "subscriptions",
+      "staff_invitations",
+      "audit_logs",
+      "vehicle_history_shares",
+    ]) {
+      for (const operation of ["SELECT", "INSERT", "UPDATE", "DELETE"]) {
+        for (const role of ["anon", "authenticated", "service_role"]) {
+          expect(
+            await scalar("select has_table_privilege($1,$2,$3)", [
+              role,
+              `public.${table}`,
+              operation,
+            ]),
+            `${role} ${operation} on ${table}`,
+          ).toBe(role === "service_role");
+        }
+      }
+      expect(
+        await scalar(
+          "select relrowsecurity from pg_class where oid=$1::regclass",
+          [`public.${table}`],
+        ),
+      ).toBe(true);
+    }
+  });
+  it.each([
+    {
+      name: "mechanic",
+      role: "MECHANIC",
+      profileActive: true,
+      memberActive: true,
+      status: "ACTIVE",
+    },
+    {
+      name: "accountant",
+      role: "ACCOUNTANT",
+      profileActive: true,
+      memberActive: true,
+      status: "ACTIVE",
+    },
+    {
+      name: "disabled profile",
+      role: "MECHANIC",
+      profileActive: false,
+      memberActive: true,
+      status: "ACTIVE",
+    },
+    {
+      name: "inactive membership",
+      role: "MECHANIC",
+      profileActive: true,
+      memberActive: false,
+      status: "ACTIVE",
+    },
+    {
+      name: "suspended garage",
+      role: "MECHANIC",
+      profileActive: true,
+      memberActive: true,
+      status: "SUSPENDED",
+    },
+  ])("blocks direct invoice tampering for $name", async (actor) => {
+    await db.query("update profiles set is_active=$1 where id=$2", [
+      actor.profileActive,
+      id(3),
+    ]);
+    await db.query("update memberships set role=$1,is_active=$2 where id=$3", [
+      actor.role,
+      actor.memberActive,
+      id(71),
+    ]);
+    await db.query("update franchises set status=$1 where id=$2", [
+      actor.status,
+      id(10),
+    ]);
+    await db.query(
+      "insert into invoices(id,number,franchise_id,shop_id,customer_id,status,subtotal,tax_amount,total_amount) values($1,'DIRECT-WRITE',$2,$3,$4,'ISSUED',1000,0,1000)",
+      [id(900), id(10), id(20), id(2)],
+    );
+    await db.query("select set_config('request.jwt.claim.sub',$1,true)", [
+      id(3),
+    ]);
+    await db.exec("set local role authenticated");
+    expect(await scalar("select auth.uid()")).toBe(id(3));
+    await fails(
+      "update invoices set status='PAID',amount_paid=1000 where id=$1",
+      [id(900)],
+      "permission denied for table invoices",
+    );
+    await db.exec("set local role service_role");
+    expect(
+      await scalar("select status from invoices where id=$1", [id(900)]),
+    ).toBe("ISSUED");
+    expect(
+      await scalar("select amount_paid from invoices where id=$1", [id(900)]),
+    ).toBe("0.00");
+  });
+  it("blocks a mechanic from directly reading another branch's internal booking notes", async () => {
+    await db.query(
+      "insert into shops(id,franchise_id,name,slug,email,address,county) values($1,$2,'Other branch','other','other@example.com','Street','Nairobi')",
+      [id(21), id(10)],
+    );
+    await db.query(
+      "insert into bookings(id,reference,franchise_id,shop_id,customer_id,vehicle_id,scheduled_at,internal_notes) values($1,'OTHER-BRANCH',$2,$3,$4,$5,now()+interval '14 days','Private branch note')",
+      [id(42), id(10), id(21), id(2), id(30)],
+    );
+    await db.query("select set_config('request.jwt.claim.sub',$1,true)", [
+      id(3),
+    ]);
+    await db.exec("set local role authenticated");
+    await fails(
+      "select internal_notes from bookings where id=$1",
+      [id(42)],
+      "permission denied for table bookings",
+    );
+    await db.exec("set local role service_role");
+    expect(
+      await scalar("select internal_notes from bookings where id=$1", [id(42)]),
+    ).toBe("Private branch note");
+  });
+  it("blocks forged history consent and protects existing grants from garage staff", async () => {
+    await db.query("select set_config('request.jwt.claim.sub',$1,true)", [
+      id(3),
+    ]);
+    await db.exec("set local role authenticated");
+    await fails(
+      "insert into vehicle_history_shares(vehicle_id,franchise_id,owner_id) values($1,$2,$3)",
+      [id(30), id(10), id(2)],
+      "permission denied for table vehicle_history_shares",
+    );
+    await db.exec("set local role service_role");
+    expect(await scalar("select count(*) from vehicle_history_shares")).toBe(0);
+    await db.query(
+      "insert into vehicle_history_shares(vehicle_id,franchise_id,owner_id) values($1,$2,$3)",
+      [id(30), id(10), id(2)],
+    );
+    await db.exec("set local role authenticated");
+    await fails(
+      "update vehicle_history_shares set owner_id=$1 where vehicle_id=$2",
+      [id(3), id(30)],
+      "permission denied for table vehicle_history_shares",
+    );
+    await fails(
+      "delete from vehicle_history_shares where vehicle_id=$1",
+      [id(30)],
+      "permission denied for table vehicle_history_shares",
+    );
+    await db.exec("set local role service_role");
+    expect(await scalar("select owner_id from vehicle_history_shares")).toBe(
+      id(2),
+    );
+    await db.query("delete from vehicle_history_shares where vehicle_id=$1", [
+      id(30),
+    ]);
+    expect(await scalar("select count(*) from vehicle_history_shares")).toBe(0);
   });
   it("requires customer approval and rejects unauthorized or stale decisions", async () => {
     const first = await quote();

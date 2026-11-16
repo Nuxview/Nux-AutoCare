@@ -15,19 +15,59 @@ vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: () => ({
     from: (table: string) => {
       const chain: Record<string, unknown> = {};
-      for (const method of ["select", "eq", "in", "order", "maybeSingle"]) {
+      const filters = new Map<string, unknown>();
+      for (const method of [
+        "select",
+        "eq",
+        "in",
+        "order",
+        "maybeSingle",
+        "upsert",
+        "delete",
+      ]) {
         chain[method] = (...args: unknown[]) => {
           fixtures.calls.push([table, method, args]);
+          if (method === "eq") filters.set(String(args[0]), args[1]);
           return chain;
         };
       }
-      chain.then = (resolve: (value: unknown) => void) =>
-        resolve({ data: fixtures.tables[table] ?? [], error: null });
+      chain.then = (resolve: (value: unknown) => void) => {
+        const row = fixtures.tables[table] as
+          | Record<string, unknown>
+          | undefined;
+        const deniedOwner =
+          table === "vehicles" &&
+          filters.has("owner_id") &&
+          row?.owner_id !== filters.get("owner_id");
+        return resolve({
+          data: deniedOwner ? null : (fixtures.tables[table] ?? []),
+          error: null,
+        });
+      };
       return chain;
     },
   }),
 }));
 import { vehicleHistory } from "./history";
+import {
+  GET as historyRoute,
+  POST as changeHistory,
+} from "@/app/api/history/route";
+import { GET as historyReport } from "@/app/api/history/report/route";
+const vehicleId = "00000000-0000-4000-8000-000000000030";
+const franchiseId = "00000000-0000-4000-8000-000000000010";
+function shareRequest(enabled: boolean) {
+  return new Request("http://localhost/api/history", {
+    method: "POST",
+    body: JSON.stringify({
+      action: "share",
+      vehicleId,
+      franchiseId,
+      enabled,
+      owner_id: "forged-owner",
+    }),
+  });
+}
 describe("customer-controlled vehicle history", () => {
   beforeEach(() => {
     fixtures.calls = [];
@@ -45,6 +85,60 @@ describe("customer-controlled vehicle history", () => {
     });
     expect(fixtures.calls.some(([table]) => table === "jobs")).toBe(false);
   });
+  it.each([true, false])(
+    "rejects non-owner consent changes (enabled=%s)",
+    async (enabled) => {
+      const response = await changeHistory(shareRequest(enabled));
+      expect(response.status).toBe(403);
+      expect(fixtures.calls).toContainEqual([
+        "vehicles",
+        "eq",
+        ["owner_id", "viewer"],
+      ]);
+      expect(
+        fixtures.calls.some(([, method]) =>
+          ["upsert", "delete"].includes(method),
+        ),
+      ).toBe(false);
+    },
+  );
+  it("lets the owner grant consent using the server-verified identity", async () => {
+    fixtures.tables.vehicles = { id: vehicleId, owner_id: "viewer" };
+    expect((await changeHistory(shareRequest(true))).status).toBe(200);
+    expect(fixtures.calls).toContainEqual([
+      "vehicle_history_shares",
+      "upsert",
+      [
+        {
+          vehicle_id: vehicleId,
+          owner_id: "viewer",
+          franchise_id: franchiseId,
+        },
+      ],
+    ]);
+  });
+  it("lets the owner revoke only their consent for the selected vehicle and garage", async () => {
+    fixtures.tables.vehicles = { id: vehicleId, owner_id: "viewer" };
+    expect((await changeHistory(shareRequest(false))).status).toBe(200);
+    expect(
+      fixtures.calls.filter(([table]) => table === "vehicle_history_shares"),
+    ).toEqual([
+      ["vehicle_history_shares", "delete", []],
+      ["vehicle_history_shares", "eq", ["vehicle_id", vehicleId]],
+      ["vehicle_history_shares", "eq", ["owner_id", "viewer"]],
+      ["vehicle_history_shares", "eq", ["franchise_id", franchiseId]],
+    ]);
+  });
+  it.each([historyRoute, historyReport])(
+    "denies history and report requests without owner consent (%#)",
+    async (get) => {
+      const response = await get(
+        new Request(`http://localhost/api/history?vehicleId=${vehicleId}`),
+      );
+      expect(response.status).toBe(403);
+      expect(fixtures.calls.some(([table]) => table === "jobs")).toBe(false);
+    },
+  );
   it("checks membership and exposes only customer-facing records after a grant", async () => {
     fixtures.tables.vehicle_history_shares = [{ franchise_id: "garage" }];
     await expect(vehicleHistory("vehicle")).resolves.toMatchObject({
