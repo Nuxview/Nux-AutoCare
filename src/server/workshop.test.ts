@@ -206,6 +206,66 @@ describe("workshop database workflows", () => {
     ).toEqual([]);
   });
   it.each([
+    { column: "global_role", value: "PLATFORM_ADMIN" },
+    { column: "email", value: "spoofed@example.com" },
+    { column: "is_active", value: true },
+    { column: "phone_encrypted", value: "forged-ciphertext" },
+    { column: "phone_search_hash", value: "forged-search-hash" },
+  ])("blocks browser updates to profile $column", async ({ column, value }) => {
+    if (column === "is_active") {
+      await db.query("update profiles set is_active=false where id=$1", [id(3)]);
+    }
+    await db.query("select set_config('request.jwt.claim.sub',$1,true)", [id(3)]);
+    await db.exec("set local role authenticated");
+    await fails(
+      `update profiles set ${column}=$1 where id=$2`,
+      [value, id(3)],
+      "permission denied for table profiles",
+    );
+    for (const role of ["anon", "authenticated"]) {
+      expect(
+        await scalar("select has_table_privilege($1,'public.profiles','UPDATE')", [
+          role,
+        ]),
+      ).toBe(false);
+      expect(
+        await scalar(
+          "select has_column_privilege($1,'public.profiles',$2,'UPDATE')",
+          [role, column],
+        ),
+      ).toBe(false);
+    }
+  });
+  it("preserves self-only profile reads and hides profiles from anonymous users", async () => {
+    await db.query("select set_config('request.jwt.claim.sub',$1,true)", [id(3)]);
+    await db.exec("set local role authenticated");
+    expect((await db.query("select id,email from profiles")).rows).toEqual([
+      { id: id(3), email: "person3@example.com" },
+    ]);
+    await db.exec("set local role anon");
+    expect((await db.query("select id from profiles")).rows).toEqual([]);
+  });
+  it("preserves server-managed profile updates", async () => {
+    await db.exec("set local role service_role");
+    expect(
+      (
+        await db.query(
+          "update profiles set global_role='PLATFORM_ADMIN',email='verified@example.com',is_active=false,phone_encrypted='server-ciphertext',phone_search_hash='server-search-hash' where id=$1 returning global_role,email,is_active,phone_encrypted,phone_search_hash",
+          [id(3)],
+        )
+      ).rows,
+    ).toEqual([
+      {
+        global_role: "PLATFORM_ADMIN",
+        email: "verified@example.com",
+        is_active: false,
+        phone_encrypted: "server-ciphertext",
+        phone_search_hash: "server-search-hash",
+      },
+    ]);
+    expect(await scalar("select count(*) from profiles")).toBe(6);
+  });
+  it.each([
     {
       name: "mechanic",
       role: "MECHANIC",
