@@ -657,6 +657,67 @@ describe("workshop database workflows", () => {
       "READY",
     );
   });
+  it("releases a failed Paystack reservation for another provider without crediting the invoice", async () => {
+    await db.query(
+      "insert into invoices(id,number,franchise_id,shop_id,customer_id,status,subtotal,tax_amount,total_amount) values($1,'PAYSTACK-FAILURE',$2,$3,$4,'ISSUED',1000,0,1000)",
+      [id(900), id(10), id(20), id(2)],
+    );
+    const reference = `PAY-${"f".repeat(32)}`;
+    await db.query(
+      "insert into payments(id,reference,franchise_id,shop_id,customer_id,invoice_id,provider,amount,currency,status) values($1,$2,$3,$4,$5,$6,'PAYSTACK',1000,'KES','PROCESSING')",
+      [id(901), reference, id(10), id(20), id(2), id(900)],
+    );
+    await fails(
+      "select reserve_sandbox_payment($1,$2,'STRIPE')",
+      [id(900), id(2)],
+      "CHECKOUT_OPEN",
+    );
+    await db.query("update payments set status='FAILED' where id=$1", [id(901)]);
+    expect(
+      await scalar("select reserve_sandbox_payment($1,$2,'STRIPE')", [id(900), id(2)]),
+    ).toMatchObject({ provider: "STRIPE", status: "PENDING" });
+    await fails(
+      "select settle_paystack_invoice_payment($1,100000,'KES')",
+      [reference],
+      "PAYMENT_NOT_PAYABLE",
+    );
+    expect(
+      await scalar("select amount_paid from invoices where id=$1", [id(900)]),
+    ).toBe("0.00");
+    expect(
+      await scalar("select count(*) from notifications where type='PAYMENT_SUCCEEDED'"),
+    ).toBe(0);
+    await fails(
+      "insert into payments(reference,franchise_id,shop_id,customer_id,invoice_id,provider,amount,currency) values('PAY-new',$1,$2,$3,$4,'PAYSTACK',1000,'KES')",
+      [id(10), id(20), id(2), id(900)],
+      "payments_one_open_online_invoice",
+    );
+  });
+  it("settles Paystack success exactly once and validates the amount and currency", async () => {
+    await db.query(
+      "insert into invoices(id,number,franchise_id,shop_id,customer_id,status,subtotal,tax_amount,total_amount) values($1,'PAYSTACK-SUCCESS',$2,$3,$4,'ISSUED',1000,0,1000)",
+      [id(900), id(10), id(20), id(2)],
+    );
+    await db.query(
+      "insert into payments(id,reference,franchise_id,shop_id,customer_id,invoice_id,provider,amount,currency,status) values($1,'PAY-success',$2,$3,$4,$5,'PAYSTACK',1000,'KES','PROCESSING')",
+      [id(901), id(10), id(20), id(2), id(900)],
+    );
+    for (const [amount, currency] of [[1, "KES"], [100000, "USD"]]) {
+      await fails(
+        "select settle_paystack_invoice_payment('PAY-success',$1,$2)",
+        [amount, currency],
+        "PAYMENT_AMOUNT_MISMATCH",
+      );
+    }
+    expect(await scalar("select settle_paystack_invoice_payment('PAY-success',100000,'KES')")).toBe(true);
+    expect(await scalar("select settle_paystack_invoice_payment('PAY-success',100000,'KES')")).toBe(false);
+    expect(
+      await scalar("select amount_paid from invoices where id=$1", [id(900)]),
+    ).toBe("1000.00");
+    expect(
+      await scalar("select count(*) from notifications where data->>'paymentId'=$1", [id(901)]),
+    ).toBe(1);
+  });
   it.each(["STRIPE", "MPESA"])("reserves one %s checkout and settles verified payments exactly once", async (provider) => {
     await db.query(
       "insert into invoices(id,number,franchise_id,shop_id,customer_id,status,subtotal,tax_amount,total_amount) values($1,'PAY-TEST',$2,$3,$4,'ISSUED',1000,0,1000)",

@@ -40,6 +40,8 @@ Sign in as the demo customer, open Invoices, and choose Stripe or enter the Dara
 
 After any uncertain result use **Check payment status**. Refreshing restores the active payment from the database. An M-Pesa timeout before the checkout ID is saved is deliberately left pending, since blindly repeating an STK request could charge twice. An operator must verify the request in Daraja before marking it failed; no automatic timeout cancellation is performed. Stripe initiation retries reuse the same idempotency key for up to 23 hours; older unresolved requests require operator reconciliation.
 
+For Paystack invoices, a server-verified `failed` transaction releases the checkout reservation only after its reference, amount, currency and garage payout destination match. The payment is recorded as failed without crediting the invoice, allowing a fresh checkout or another configured provider. Abandoned, pending, unknown or unverified outcomes keep their reservation; elapsed time alone never releases it. Verification returns HTTP 202 while processing and HTTP 200 with the terminal payment `status` and `paid` flag when resolved. A terminal failure is not a payment confirmation.
+
 ## Before real payments
 
 This release does not enable live collection or distribute money between garages. Add verified per-garage merchant/payout accounts (Stripe Connect and appropriate Daraja merchant credentials), live onboarding, refunds, reconciliation monitoring, and operational handling of ambiguous provider outcomes before enabling live payments. Do not remove the sandbox restriction simply by substituting live secrets.

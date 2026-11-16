@@ -13,10 +13,10 @@ function code(value: unknown, field: string): string | null {
   return null;
 }
 
-export async function reconcilePaystackTransaction(reference: string) {
+export async function reconcilePaystackTransaction(reference: string): Promise<{ found: boolean; paid: boolean; status?: string }> {
   const admin = createAdminClient();
   const [paymentResult, subscriptionResult] = await Promise.all([
-    admin.from("payments").select("id,reference,franchise_id,status,provider").eq("reference", reference).eq("provider", "PAYSTACK").maybeSingle(),
+    admin.from("payments").select("id,reference,franchise_id,status,provider,amount,currency").eq("reference", reference).eq("provider", "PAYSTACK").maybeSingle(),
     admin.from("subscriptions").select("id,franchise_id,current_period_ends_at,paystack_customer_code,paystack_plan_code,paystack_subscription_code,plan:plans(monthly_price)")
       .eq("paystack_checkout_reference", reference).maybeSingle(),
   ]);
@@ -25,25 +25,43 @@ export async function reconcilePaystackTransaction(reference: string) {
   const payment = paymentResult.data;
   const subscription = subscriptionResult.data;
   if (!payment && !subscription) return { found: false, paid: false };
+  if (payment && !["PENDING", "PROCESSING"].includes(payment.status)) {
+    return { found: true, paid: payment.status === "SUCCEEDED", status: payment.status };
+  }
 
   const transaction = await verifyTransaction(reference);
-  if (transaction.reference !== reference || transaction.status !== "success") return { found: true, paid: false };
+  if (transaction.reference !== reference) throw new ApiError(409, "Paystack transaction reference does not match", "PAYMENT_MISMATCH");
+  if (transaction.status !== "success" && !(payment && transaction.status === "failed")) {
+    return { found: true, paid: false, status: payment?.status };
+  }
   if (transaction.currency !== "KES" || !Number.isSafeInteger(transaction.amount)) {
     throw new ApiError(409, "Paystack transaction currency or amount is invalid", "PAYMENT_MISMATCH");
   }
 
   if (payment) {
+    if (transaction.currency !== payment.currency || transaction.amount !== toPaystackMinorUnits(payment.amount)) {
+      throw new ApiError(409, "Paystack transaction amount or currency does not match the payment", "PAYMENT_MISMATCH");
+    }
     const { data: franchise, error } = await admin.from("franchises").select("paystack_subaccount_code")
       .eq("id", payment.franchise_id).single();
     if (error) throw error;
     if (!franchise.paystack_subaccount_code || code(transaction.subaccount, "subaccount_code") !== franchise.paystack_subaccount_code) {
       throw new ApiError(409, "Paystack payout destination does not match the garage", "PAYOUT_MISMATCH");
     }
+    if (transaction.status === "failed") {
+      const updated = await admin.from("payments").update({ status: "FAILED", failure_reason: "Paystack reported transaction failure" })
+        .eq("id", payment.id).in("status", ["PENDING", "PROCESSING"]);
+      if (updated.error) throw updated.error;
+      // Return the saved state if another reconciler completed the payment first.
+      const current = await admin.from("payments").select("status").eq("id", payment.id).single();
+      if (current.error) throw current.error;
+      return { found: true, paid: current.data.status === "SUCCEEDED", status: current.data.status };
+    }
     const settled = await admin.rpc("settle_paystack_invoice_payment", {
       p_reference: reference, p_amount_minor: transaction.amount, p_currency: transaction.currency,
     });
     if (settled.error) throw settled.error;
-    return { found: true, paid: true };
+    return { found: true, paid: true, status: "SUCCEEDED" };
   }
 
   if (!subscription) return { found: false, paid: false };

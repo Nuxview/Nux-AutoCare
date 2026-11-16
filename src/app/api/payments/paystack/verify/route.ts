@@ -23,6 +23,7 @@ export async function GET(request: Request) {
       await requireTenantMembership(data.franchise_id, undefined, ["FRANCHISE_OWNER"], true, user);
     }
     const result = await reconcilePaystackTransaction(reference);
-    return Response.json({ paid: result.paid }, { status: result.paid ? 200 : 202 });
+    const pending = !result.paid && (!result.status || ["PENDING", "PROCESSING"].includes(result.status));
+    return Response.json({ paid: result.paid, status: result.status }, { status: pending ? 202 : 200 });
   } catch (error) { return jsonError(error); }
 }
