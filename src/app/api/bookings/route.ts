@@ -13,7 +13,7 @@ export async function GET() {
     const { data, error } = await createAdminClient()
       .from("bookings")
       .select(
-        "*,shop:shops(id,name,county),vehicle:vehicles(registration,make,model),service:service_catalog(name,base_price),job:jobs(id,reference,status)",
+        "id,reference,franchise_id,shop_id,customer_id,vehicle_id,service_id,status,scheduled_at,customer_notes,decision_note,created_at,updated_at,shop:shops(id,name,county),vehicle:vehicles(registration,make,model),service:service_catalog(name,base_price),job:jobs(id,reference,status)",
       )
       .eq("customer_id", user.id)
       .order("scheduled_at", { ascending: false });
