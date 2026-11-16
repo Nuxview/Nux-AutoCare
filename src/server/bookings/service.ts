@@ -19,7 +19,7 @@ export async function createBooking(customerId: string, input: z.infer<typeof bo
     if (error.message.includes("OUTSIDE_OPENING_HOURS")) throw new ApiError(400, "Choose a time within this garage’s opening hours", "OUTSIDE_OPENING_HOURS");
     throw error;
   }
-  const result = await admin.from("bookings").select("*,shop:shops(name),vehicle:vehicles(registration,make,model),service:service_catalog(name,base_price)").eq("id", id).single();
+  const result = await admin.from("bookings").select("id,reference,franchise_id,shop_id,customer_id,vehicle_id,service_id,status,scheduled_at,customer_notes,decision_note,created_at,updated_at,shop:shops(name),vehicle:vehicles(registration,make,model),service:service_catalog(name,base_price)").eq("id", id).single();
   if (result.error) throw result.error;
   return camelize(result.data);
 }
