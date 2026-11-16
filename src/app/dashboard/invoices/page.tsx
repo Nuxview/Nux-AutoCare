@@ -42,15 +42,18 @@ export default function InvoicesPage() {
       void request(
         `/api/payments/paystack/verify?reference=${encodeURIComponent(reference)}`,
       ).then(async (response) => {
+        const result = await response.json();
         setMessage(
           response.status === 202
             ? "Payment is still processing."
             : response.ok
-              ? "Payment confirmed."
+              ? result.paid
+                ? "Payment confirmed."
+                : `Payment ${String(result.status || "unconfirmed").toLowerCase()}.`
               : "Payment could not be confirmed yet.",
         );
         if (response.ok) await load();
-      });
+      }).catch(() => setMessage("Payment could not be confirmed yet."));
     }
     const stripeReference = new URLSearchParams(window.location.search).get(
       "stripe_reference",
