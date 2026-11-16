@@ -8,16 +8,20 @@ const GARAGE_B_ID = "22222222-2222-4222-8222-222222222222";
 const USER_A_ID = "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa";
 
 describe("Supabase anonymous access and invalid sessions", () => {
-  it("asserts unauthenticated anon request receives zero rows across protected tables", async () => {
-    // Tests that anonymous access via anon key is strictly denied or returns 0 rows
+  it("denies anonymous operational reads and hides profiles", async () => {
     const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     const tables = ["jobs", "invoices", "bookings", "profiles"] as const;
 
     await Promise.all(
       tables.map(async (table) => {
         const { data, error } = await client.from(table).select("*");
-        expect(error).toBeNull();
-        expect(data).toHaveLength(0);
+        if (table === "profiles") {
+          expect(error).toBeNull();
+          expect(data).toHaveLength(0);
+        } else {
+          expect(error?.code).toBe("42501");
+          expect(data).toBeNull();
+        }
       }),
     );
   });

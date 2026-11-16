@@ -1,13 +1,13 @@
 node_modules
 node_modules.incomplete-*
 .next
-.env
-.env.local
+.env*
+!/.env.example
 coverage
 *.log
 dist
 generated
 *.tsbuildinfo
 supabase/.temp/
+supabase/.branches/
 .vercel
-.env*

@@ -304,47 +304,22 @@ describe("PART A: Real Row-Level Security (RLS) enforcement", () => {
     }
   }, 30000);
 
-  it("asserts a Garage A member can read Garage A rows and receives zero rows for Garage B across jobs, bookings, and invoices", async () => {
-    // Query Garage A and Garage B rows as authenticated Garage A member
-    const { data: jobsA, error: jobsAError } = await authenticatedAnonClient
-      .from("jobs")
-      .select("id,franchise_id")
-      .eq("franchise_id", garageAId);
-    expect(jobsAError).toBeNull();
-    expect(jobsA?.length).toBeGreaterThan(0);
-
-    const { data: jobsB } = await authenticatedAnonClient
-      .from("jobs")
-      .select("id,franchise_id")
-      .eq("franchise_id", garageBId);
-    expect(jobsB ?? []).toHaveLength(0);
-
-    const { data: bookingsA, error: bookingsAError } = await authenticatedAnonClient
-      .from("bookings")
-      .select("id,franchise_id")
-      .eq("franchise_id", garageAId);
-    expect(bookingsAError).toBeNull();
-    expect(bookingsA?.length).toBeGreaterThan(0);
-
-    const { data: bookingsB } = await authenticatedAnonClient
-      .from("bookings")
-      .select("id,franchise_id")
-      .eq("franchise_id", garageBId);
-    expect(bookingsB ?? []).toHaveLength(0);
-
-    const { data: invoicesA, error: invoicesAError } = await authenticatedAnonClient
-      .from("invoices")
-      .select("id,franchise_id")
-      .eq("franchise_id", garageAId);
-    expect(invoicesAError).toBeNull();
-    expect(invoicesA?.length).toBeGreaterThan(0);
-
-    const { data: invoicesB } = await authenticatedAnonClient
-      .from("invoices")
-      .select("id,franchise_id")
-      .eq("franchise_id", garageBId);
-    expect(invoicesB ?? []).toHaveLength(0);
-  });
+  it("denies direct operational reads for members of either garage and preserves server access", async () => {
+    await Promise.all(
+      ["jobs", "bookings", "invoices"].flatMap((table) =>
+        [garageAId, garageBId].map(async (franchiseId) => {
+          const [denied, server] = await Promise.all([
+            authenticatedAnonClient.from(table).select("id").eq("franchise_id", franchiseId),
+            adminClient.from(table).select("id").eq("franchise_id", franchiseId),
+          ]);
+          expect(denied.error?.code).toBe("42501");
+          expect(denied.data).toBeNull();
+          expect(server.error).toBeNull();
+          expect(server.data?.length).toBeGreaterThan(0);
+        }),
+      ),
+    );
+  }, 30000);
 
   it("asserts a write to a Garage B row fails for a user who only belongs to Garage A", async () => {
     // Attempt inserting a job under Garage B using Garage A member session
@@ -357,24 +332,14 @@ describe("PART A: Real Row-Level Security (RLS) enforcement", () => {
       status: "OPEN",
     });
 
-    expect(insertError).not.toBeNull();
+    expect(insertError?.code).toBe("42501");
   });
 
-  it("asserts an unauthenticated anon client gets zero rows across jobs, bookings, and invoices", async () => {
-    // Verify an unauthenticated client receives zero accessible rows
-    const { data: anonJobs } = await unauthenticatedAnonClient
-      .from("jobs")
-      .select("id,franchise_id");
-    expect(anonJobs ?? []).toHaveLength(0);
-
-    const { data: anonBookings } = await unauthenticatedAnonClient
-      .from("bookings")
-      .select("id,franchise_id");
-    expect(anonBookings ?? []).toHaveLength(0);
-
-    const { data: anonInvoices } = await unauthenticatedAnonClient
-      .from("invoices")
-      .select("id,franchise_id");
-    expect(anonInvoices ?? []).toHaveLength(0);
+  it("denies anonymous operational table reads", async () => {
+    for (const table of ["jobs", "bookings", "invoices"]) {
+      const { data, error } = await unauthenticatedAnonClient.from(table).select("id");
+      expect(error?.code).toBe("42501");
+      expect(data).toBeNull();
+    }
   });
 });

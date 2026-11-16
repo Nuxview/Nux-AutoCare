@@ -10,7 +10,9 @@ AutoCare is a modular monolith built on Next.js App Router. Route handlers are t
 - Client-supplied identifiers are treated as lookup hints only. Services validate vehicle ownership, membership, shop/franchise relationships, subscription state, and role before mutations.
 - Phone/VIN-style sensitive fields are AES-256-GCM encrypted. A separate one-way normalized hash supports exact lookups without deterministic encryption.
 - The service-role Supabase key runs only on the server. Browser clients never receive it; route handlers enforce identity and tenant scope before data access.
-- Row Level Security is enabled on all application tables. The current server-only data layer bypasses RLS only after route-level authorization; direct browser table access is denied by default.
+- Row Level Security is enabled on all application tables. Operational data (bookings, jobs, invoices, inventory, services, shops, payments, subscriptions, invitations and audit logs) is server-only: browser roles have no table privileges. The service-role data layer bypasses RLS only after route-level authorization. `20261116000100_restore_operational_server_access.sql` restores this boundary for existing databases without changing their records or service-role grants.
+- Vehicle history consent is also server-only. `20261116000200_restore_history_consent_server_access.sql` removes direct browser access to sharing grants; the history route verifies vehicle ownership before granting or revoking consent. Existing sharing records are preserved.
+- `20261116000300_restore_related_server_access.sql` removes default browser grants from related server-only tables, including invoice lines and repair tasks. Vehicles retain their explicit owner-only CRUD policy; memberships retain self-only reads.
 - Supabase Storage uses a private `repair-photos` bucket and a public `garage-logos` bucket. All uploads and signed photo reads go through authenticated, tenant-checked server routes. The legacy generic upload route remains disabled.
 - Money uses PostgreSQL `NUMERIC` and Decimal.js for arithmetic.
 

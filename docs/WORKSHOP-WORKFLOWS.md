@@ -29,7 +29,7 @@ History is explicitly projected to customer-facing fields. Garage access require
 ## Setup and rollout
 
 1. Back up the target database according to your normal deployment process.
-2. Apply all SQL migrations in filename order, ending with `20261102133752_workshop_workflows.sql`.
+2. Apply every SQL migration in `supabase/migrations` in filename order, including the later corrective access-control migrations.
 3. Configure the existing Supabase URL, publishable key, server secret and field-encryption key in the application environment.
 4. Deploy the application and sign in as an owner to configure bays and invite staff.
 5. Use a customer account and invited mechanic to exercise a complete booking, assignment, quote approval, stock usage, invoice and collection journey.
