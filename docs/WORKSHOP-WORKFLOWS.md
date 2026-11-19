@@ -24,7 +24,7 @@ UI → authenticated Next.js route → role/ownership validation → service-rol
 
 Quotes lock the job row and assign sequential versions. Decisions lock the same job and reject an outdated version. Parts movements lock the job and inventory row and carry a unique request ID for retry safety. Invoice creation locks the job and returns the existing invoice on repeat requests. Scheduling serializes by branch and mechanic and checks overlapping intervals, including mechanics who work across branches.
 
-Repair status changes lock the booking and job, then validate the current stage, completed steps and staff access before saving job status, booking status and the customer notification in one transaction. Same-status retries preserve completion timestamps and avoid duplicate notices; they can also recover side effects missing from the older handler.
+Repair status changes lock the booking and job, then validate the current stage, completed steps and staff access before saving job status, booking status and the customer notification in one transaction. Same-status retries preserve completion timestamps and avoid duplicate notices; they can also recover side effects missing from the older handler. Task writes lock and check the current job stage too: unfinished steps cannot be added or restored after READY, while notes on completed steps remain editable until the job closes.
 
 History is explicitly projected to customer-facing fields. Garage access requires an owner grant plus an active authorized membership; this does not grant access to another garage's operational endpoints or internal notes. Signed photo links expire after five minutes.
 

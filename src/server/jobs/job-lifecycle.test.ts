@@ -211,7 +211,7 @@ describe("AREA 3: Job lifecycle transitions", () => {
 
     it.each([
       ["APPROVED", "IN_PROGRESS"], ["READY", "READY"], ["COMPLETED", "COMPLETED"],
-    ])("keeps a delayed step start consistent when the current stage is %s", async (laterStatus, expectedStatus) => {
+    ])("keeps the post-task job update conditional when the stage becomes %s", async (laterStatus, expectedStatus) => {
       const taskId = "88888888-8888-4888-8888-888888888888";
       let savedStatus = "APPROVED";
       mockJobAccess.mockResolvedValue({ job: { id: VALID_JOB_ID, status: "APPROVED" } });
@@ -242,6 +242,24 @@ describe("AREA 3: Job lifecycle transitions", () => {
       }));
       expect(response.status).toBe(200);
       expect(savedStatus).toBe(expectedStatus);
+    });
+
+    it("returns 409 without touching the job when the task guard rejects a stale start", async () => {
+      mockJobAccess.mockResolvedValue({ job: { id: VALID_JOB_ID, status: "APPROVED" } });
+      mockAdminFrom.mockImplementation((table: string) => {
+        if (table !== "repair_tasks") throw new Error("A rejected task write must not touch the job");
+        return {
+          select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { job_id: VALID_JOB_ID }, error: null }) }) }),
+          update: () => ({ eq: () => ({ select: () => ({ single: async () => ({ data: null, error: { message: "JOB_READY" } }) }) }) }),
+        };
+      });
+      const response = await updateTaskRoute(new Request("http://localhost:3000/api/jobs/tasks", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId: "88888888-8888-4888-8888-888888888888", status: "IN_PROGRESS" }),
+      }));
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({ error: { code: "JOB_READY" } });
+      expect(mockAdminFrom.mock.calls.map(([table]) => table)).toEqual(["repair_tasks", "repair_tasks"]);
     });
 
     it("reports an unclassified database failure as 500", async () => {

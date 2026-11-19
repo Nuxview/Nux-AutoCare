@@ -69,11 +69,10 @@ describe("workshop database workflows", () => {
     for (const file of (await readdir(dir))
       .filter((f) => f.endsWith(".sql"))
       .sort()) {
-      // PGlite includes gen_random_uuid in core but does not bundle pgcrypto.
-      const sql = (await readFile(path.join(dir, file), "utf8")).replace(
-        "create extension if not exists pgcrypto;",
-        "",
-      );
+      // PGlite omits pgcrypto and Supabase's platform-only advisor extensions.
+      const sql = (await readFile(path.join(dir, file), "utf8"))
+        .replace("create extension if not exists pgcrypto;", "")
+        .replace(/^(?:CREATE|COMMENT ON) EXTENSION "(?:hypopg|index_advisor)"[^;]*;/gm, "");
       await db.exec(sql);
     }
     for (let n = 1; n <= 6; n++) {
@@ -732,6 +731,42 @@ describe("workshop database workflows", () => {
       expect(await scalar("select status from jobs where id=$1", [id(50)])).toBe("COMPLETED");
       expect(await scalar("select status from bookings where id=$1", [id(40)])).toBe("CONFIRMED");
       expect(await notices()).toBe(2);
+    });
+
+    it.each(["PENDING", "IN_PROGRESS"])("rejects a delayed %s task write after READY commits", async (status) => {
+      await prepareRepair();
+      await db.query("update jobs set status='APPROVED' where id=$1", [id(50)]);
+      expect(await scalar("select status from jobs where id=$1", [id(50)])).toBe("APPROVED");
+      await transition("IN_PROGRESS");
+      await transition("READY");
+      await db.exec("set local role service_role");
+      await fails("update repair_tasks set status=$1 where id=$2 returning status", [status, id(90)], "JOB_READY");
+      expect(await scalar("select status from repair_tasks where id=$1", [id(90)])).toBe("COMPLETED");
+      expect(await scalar("select status from jobs where id=$1", [id(50)])).toBe("READY");
+      expect(await scalar("select status from bookings where id=$1", [id(40)])).toBe("READY_FOR_COLLECTION");
+      expect(await notices()).toBe(1);
+    });
+
+    it.each(["PENDING", "IN_PROGRESS"])("rejects a new unfinished %s task after READY", async (status) => {
+      await prepareRepair();
+      await transition("READY");
+      await fails("insert into repair_tasks(id,job_id,title,status) values($1,$2,'Late step',$3)", [id(91), id(50), status], "JOB_READY");
+      expect(await scalar("select count(*) from repair_tasks where job_id=$1", [id(50)])).toBe(1);
+    });
+
+    it.each(["approved quote", "legacy invoice"])("preserves task edits before handover and completed-task notes at READY with %s", async (approval) => {
+      await prepareRepair();
+      if (approval === "legacy invoice") {
+        await db.query("insert into invoices(number,franchise_id,shop_id,customer_id,job_id,subtotal,tax_amount,total_amount) values('READY-GUARD-LEGACY',$1,$2,$3,$4,1000,0,1000)", [id(10), id(20), id(2), id(50)]);
+        await db.query("update jobs set current_quote_id=null where id=$1", [id(50)]);
+      }
+      await db.query("update repair_tasks set status='PENDING' where id=$1", [id(90)]);
+      await db.query("update repair_tasks set status='IN_PROGRESS' where id=$1", [id(90)]);
+      await db.query("update repair_tasks set status='COMPLETED' where id=$1", [id(90)]);
+      await transition("READY");
+      await db.query("update repair_tasks set note='Final inspection recorded' where id=$1", [id(90)]);
+      expect(await scalar("select note from repair_tasks where id=$1", [id(90)])).toBe("Final inspection recorded");
+      expect(await scalar("select status from repair_tasks where id=$1", [id(90)])).toBe("COMPLETED");
     });
 
     it("checks every current stage against the three supported targets", async () => {
