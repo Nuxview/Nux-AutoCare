@@ -1,0 +1,204 @@
+{
+  "node_count": 852,
+  "unverified_node_count": 0,
+  "raw_edge_count": 2420,
+  "non_object_edges": 0,
+  "missing_endpoint_edges": 0,
+  "dangling_endpoint_edges": 3,
+  "external_reference_edges": 13,
+  "self_loop_edges": 2,
+  "valid_candidate_edges": 2404,
+  "exact_duplicate_edges": 1,
+  "directed_unique_endpoint_pairs": 2329,
+  "directed_same_endpoint_collapsed_edges": 75,
+  "undirected_unique_endpoint_pairs": 2329,
+  "undirected_same_endpoint_collapsed_edges": 75,
+  "same_endpoint_group_count": 71,
+  "relation_variant_groups": 55,
+  "source_file_variant_groups": 0,
+  "source_location_variant_groups": 15,
+  "context_variant_groups": 0,
+  "post_build_graph_type": "Graph",
+  "post_build_node_count": 859,
+  "post_build_edge_count": 2345,
+  "post_build_error": "",
+  "producer_suppression": {
+    "path": "/home/pierce/.local/share/uv/tools/graphifyy/lib/python3.12/site-packages/graphify/extract.py",
+    "total_sites": 12,
+    "sites": [
+      {
+        "line": 1902,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids = {n[\"id\"] for n in nodes}"
+      },
+      {
+        "line": 2597,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids = {n[\"id\"] for n in nodes}"
+      },
+      {
+        "line": 2599,
+        "name": "seen_doc_refs",
+        "tuple_arity": 0,
+        "sample": "seen_doc_refs: set[str] = set()"
+      },
+      {
+        "line": 3266,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids: set[str] = {n[\"id\"] for n in nodes}"
+      },
+      {
+        "line": 3413,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids = {n.get(\"id\") for n in nodes}"
+      },
+      {
+        "line": 5148,
+        "name": "seen_keys",
+        "tuple_arity": 0,
+        "sample": "seen_keys: set[tuple] = set()"
+      },
+      {
+        "line": 5334,
+        "name": "seen_keys",
+        "tuple_arity": 0,
+        "sample": "seen_keys: set[tuple] = set()"
+      },
+      {
+        "line": 9853,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids: set[str] = set()"
+      },
+      {
+        "line": 9961,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids: set[str] = set()"
+      },
+      {
+        "line": 10040,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids: set[str] = set()"
+      },
+      {
+        "line": 10565,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids: set[str] = set()"
+      },
+      {
+        "line": 10566,
+        "name": "seen_edges",
+        "tuple_arity": 4,
+        "sample": "seen_edges: set[tuple[str, str, str, str | None]] = set()"
+      }
+    ],
+    "error": ""
+  },
+  "examples": [
+    {
+      "source": "github_workflows_ci_verify_steps",
+      "target": "github_workflows_ci_steps_run",
+      "edge_count": 6,
+      "relations": [
+        "contains"
+      ],
+      "source_files": [
+        ".github/workflows/ci.yml"
+      ],
+      "source_locations": [
+        "L17",
+        "L18",
+        "L19",
+        "L20",
+        "L22",
+        "L23"
+      ],
+      "contexts": [
+        ""
+      ]
+    },
+    {
+      "source": "github_workflows_ci_verify_steps",
+      "target": "github_workflows_ci_steps_uses",
+      "edge_count": 2,
+      "relations": [
+        "contains"
+      ],
+      "source_files": [
+        ".github/workflows/ci.yml"
+      ],
+      "source_locations": [
+        "L12",
+        "L13"
+      ],
+      "contexts": [
+        ""
+      ]
+    },
+    {
+      "source": "eslint_config",
+      "target": "ref_eslint_config_next",
+      "edge_count": 2,
+      "relations": [
+        "imports_from"
+      ],
+      "source_files": [
+        "eslint.config.mjs"
+      ],
+      "source_locations": [
+        "L2",
+        "L3"
+      ],
+      "contexts": [
+        "import"
+      ]
+    },
+    {
+      "source": "src_app_api_api_routes_test",
+      "target": "src_app_api_api_routes_test_configureauthenticateduser",
+      "edge_count": 2,
+      "relations": [
+        "calls",
+        "contains"
+      ],
+      "source_files": [
+        "src/app/api/api-routes.test.ts"
+      ],
+      "source_locations": [
+        "L49",
+        "L63"
+      ],
+      "contexts": [
+        "",
+        "call"
+      ]
+    },
+    {
+      "source": "src_app_dashboard_billing_page_billingpage",
+      "target": "src_app_dashboard_billing_page_billingpage_load",
+      "edge_count": 2,
+      "relations": [
+        "calls",
+        "contains"
+      ],
+      "source_files": [
+        "src/app/dashboard/billing/page.tsx"
+      ],
+      "source_locations": [
+        "L25",
+        "L36"
+      ],
+      "contexts": [
+        "",
+        "call"
+      ]
+    }
+  ]
+}
