@@ -25,6 +25,7 @@
   #search { width: 100%; background: var(--bg); border: 1px solid var(--input-border); color: var(--text); padding: 7px 10px; border-radius: 6px; font-size: 13px; outline: none; }
   #search:focus { border-color: #4E79A7; }
   #search-results { max-height: 140px; overflow-y: auto; padding: 4px 12px; border-bottom: 1px solid var(--border); display: none; }
+  .search-item, .neighbor-link { display: block; width: 100%; border: 0; background: transparent; color: inherit; font-family: inherit; text-align: left; }
   .search-item { padding: 4px 6px; cursor: pointer; border-radius: 4px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .search-item:hover { background: var(--border); }
   #info-panel { padding: 14px; border-bottom: 1px solid var(--border); min-height: 140px; }
@@ -205,7 +206,7 @@ function showInfo(nodeId) {
   const neighborItems = neighborIds.map(nid => {
     const nb = nodesDS.get(nid);
     const color = nb ? nb.color.background : '#555';
-    return `<span class="neighbor-link" style="border-left-color:${esc(color)}" data-nid="${esc(nid)}">${esc(nb ? nb.label : nid)}</span>`;
+    return `<button type="button" class="neighbor-link" style="border-left-color:${esc(color)}" data-nid="${esc(nid)}">${esc(nb ? nb.label : nid)}</button>`;
   }).join('');
   const isMetaNode = !n.file_type && !n.source_file;
   let html = `<div class="field"><b>${esc(n.label)}</b></div>`;
@@ -316,15 +317,16 @@ network.on('click', params => {
 
 const searchInput = document.getElementById('search');
 const searchResults = document.getElementById('search-results');
-searchInput.addEventListener('input', () => {
+function updateSearchResults() {
   const q = searchInput.value.toLowerCase().trim();
   searchResults.innerHTML = '';
   if (!q) { searchResults.style.display = 'none'; return; }
-  const matches = RAW_NODES.filter(n => n.label.toLowerCase().includes(q)).slice(0, 20);
+  const matches = RAW_NODES.filter(n => !hiddenCommunities.has(n.community) && n.label.toLowerCase().includes(q)).slice(0, 20);
   if (!matches.length) { searchResults.style.display = 'none'; return; }
   searchResults.style.display = 'block';
   matches.forEach(n => {
-    const el = document.createElement('div');
+    const el = document.createElement('button');
+    el.type = 'button';
     el.className = 'search-item';
     el.textContent = n.label;
     el.style.borderLeft = `3px solid ${n.color.background}`;
@@ -335,10 +337,12 @@ searchInput.addEventListener('input', () => {
       showInfo(n.id);
       searchResults.style.display = 'none';
       searchInput.value = '';
+      searchInput.focus();
     };
     searchResults.appendChild(el);
   });
-});
+}
+searchInput.addEventListener('input', updateSearchResults);
 document.addEventListener('click', e => {
   if (!searchResults.contains(e.target) && e.target !== searchInput)
     searchResults.style.display = 'none';
@@ -368,6 +372,7 @@ function toggleAllCommunities(hide) {
   const updates = RAW_NODES.map(n => ({ id: n.id, hidden: hide }));
   nodesDS.update(updates);
   updateSelectAllState();
+  updateSearchResults();
 }
 
 const legendEl = document.getElementById('legend');
@@ -392,6 +397,7 @@ LEGEND.forEach(c => {
       .map(n => ({ id: n.id, hidden: !cb.checked }));
     nodesDS.update(updates);
     updateSelectAllState();
+    updateSearchResults();
   });
   item.innerHTML = `<div class="legend-dot" style="background:${c.color}"></div>
     <span class="legend-label">${c.label}</span>
