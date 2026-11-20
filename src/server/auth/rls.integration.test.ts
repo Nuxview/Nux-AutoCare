@@ -280,7 +280,7 @@ describe("PART A: Real Row-Level Security (RLS) enforcement", () => {
         password: testUserPassword,
       });
     expect(signInError).toBeNull();
-    expect(sessionData.session).toBeDefined();
+    expect(sessionData.session?.access_token).toEqual(expect.any(String));
     expect(sessionData.user).not.toBeNull();
     expect(sessionData.user!.id).toBe(testUserId);
   }, 30000);
@@ -305,6 +305,10 @@ describe("PART A: Real Row-Level Security (RLS) enforcement", () => {
   }, 30000);
 
   it("denies direct operational reads for members of either garage and preserves server access", async () => {
+    expect(
+      await authenticatedAnonClient.from("profiles").select("id").eq("id", testUserId).single(),
+    ).toMatchObject({ status: 200, error: null, data: { id: testUserId } });
+
     await Promise.all(
       ["jobs", "bookings", "invoices"].flatMap((table) =>
         [garageAId, garageBId].map(async (franchiseId) => {
@@ -313,6 +317,7 @@ describe("PART A: Real Row-Level Security (RLS) enforcement", () => {
             adminClient.from(table).select("id").eq("franchise_id", franchiseId),
           ]);
           expect(denied.error?.code).toBe("42501");
+          expect(denied.status).toBe(403);
           expect(denied.data).toBeNull();
           expect(server.error).toBeNull();
           expect(server.data?.length).toBeGreaterThan(0);
@@ -323,7 +328,7 @@ describe("PART A: Real Row-Level Security (RLS) enforcement", () => {
 
   it("asserts a write to a Garage B row fails for a user who only belongs to Garage A", async () => {
     // Attempt inserting a job under Garage B using Garage A member session
-    const { error: insertError } = await authenticatedAnonClient.from("jobs").insert({
+    const { error: insertError, status } = await authenticatedAnonClient.from("jobs").insert({
       reference: `EXPLOIT-${timestamp}`,
       franchise_id: garageBId,
       shop_id: shopBId,
@@ -333,12 +338,14 @@ describe("PART A: Real Row-Level Security (RLS) enforcement", () => {
     });
 
     expect(insertError?.code).toBe("42501");
+    expect(status).toBe(403);
   });
 
   it("denies anonymous operational table reads", async () => {
     for (const table of ["jobs", "bookings", "invoices"]) {
-      const { data, error } = await unauthenticatedAnonClient.from(table).select("id");
+      const { data, error, status } = await unauthenticatedAnonClient.from(table).select("id");
       expect(error?.code).toBe("42501");
+      expect(status).toBe(401);
       expect(data).toBeNull();
     }
   });
