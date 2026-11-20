@@ -24,38 +24,7 @@ const VALID_CUSTOMER_ID = "33333333-3333-4333-8333-333333333333";
 const VALID_SHOP_ID = "44444444-4444-4444-8444-444444444444";
 const VALID_VEHICLE_ID = "55555555-5555-4555-8555-555555555555";
 
-/**
- * Pure decision function modeling the database capacity check logic
- * from public.create_booking (v_count >= v_shop.booking_capacity).
- *
- * @param activeCount - Current non-cancelled bookings for that garage shop and date.
- * @param capacity - Total configured daily booking capacity of the garage shop.
- * @returns True if a slot is available, false if capacity is reached.
- */
-export function hasAvailableCapacity(activeCount: number, capacity: number): boolean {
-  return activeCount < capacity;
-}
-
-/**
- * Simulates concurrent slot reservation guarded by an atomic transaction lock.
- *
- * @param state - Mutable state tracking active bookings count and shop capacity.
- * @returns Promise resolving to true if slot secured, or rejecting with CAPACITY_REACHED.
- */
-export async function attemptAtomicBooking(state: {
-  activeCount: number;
-  capacity: number;
-}): Promise<boolean> {
-  // Simulates PostgreSQL pg_advisory_xact_lock serialized evaluation
-  if (!hasAvailableCapacity(state.activeCount, state.capacity)) {
-    return Promise.reject(new Error("CAPACITY_REACHED"));
-  }
-  // Atomically increment active slot count
-  state.activeCount += 1;
-  return Promise.resolve(true);
-}
-
-describe("AREA 2: Booking capacity enforcement", () => {
+describe("Booking service validation and database responses", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -97,7 +66,7 @@ describe("AREA 2: Booking capacity enforcement", () => {
     expect(mockRpc).not.toHaveBeenCalled();
   });
 
-  it("refuses booking when bay/slot capacity for that day is full", async () => {
+  it("maps a database capacity rejection to HTTP 409", async () => {
     const validFutureTime = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
 
     // Database RPC signals CAPACITY_REACHED when count >= booking_capacity
@@ -119,7 +88,7 @@ describe("AREA 2: Booking capacity enforcement", () => {
     });
   });
 
-  it("accepts booking when slot capacity is free and returns created booking", async () => {
+  it("loads and returns the booking created by the database", async () => {
     const validFutureTime = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
     const createdBookingId = "66666666-6666-4666-8666-666666666666";
 
@@ -152,39 +121,5 @@ describe("AREA 2: Booking capacity enforcement", () => {
       reference: "BK-20261101-ABCD12",
       status: "REQUESTED",
     });
-  });
-
-  it("evaluates pure capacity boundary decisions correctly", () => {
-    const capacity = 8;
-    // Under capacity: slot available
-    expect(hasAvailableCapacity(0, capacity)).toBe(true);
-    expect(hasAvailableCapacity(7, capacity)).toBe(true);
-    // At capacity: refusal
-    expect(hasAvailableCapacity(8, capacity)).toBe(false);
-    // Over capacity: refusal
-    expect(hasAvailableCapacity(9, capacity)).toBe(false);
-  });
-
-  it("enforces concurrency safety: two bookings competing for the last slot, only one wins", async () => {
-    // Shared shop state with only 1 slot remaining
-    const sharedShopState = {
-      activeCount: 7,
-      capacity: 8,
-    };
-
-    // Both requests fire concurrently for the single remaining slot
-    const results = await Promise.allSettled([
-      attemptAtomicBooking(sharedShopState),
-      attemptAtomicBooking(sharedShopState),
-    ]);
-
-    const fulfilledCount = results.filter((r) => r.status === "fulfilled").length;
-    const rejectedCount = results.filter((r) => r.status === "rejected").length;
-
-    // Exactly one booking secures the slot, and the other is rejected
-    expect(fulfilledCount).toBe(1);
-    expect(rejectedCount).toBe(1);
-    // Final count exactly reaches capacity without overbooking
-    expect(sharedShopState.activeCount).toBe(8);
   });
 });

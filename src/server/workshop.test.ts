@@ -161,6 +161,30 @@ describe("workshop database workflows", () => {
     await db.query("select set_config('request.jwt.claim.sub',$1,true)", [id(3)]);
     expect(await scalar("select auth.uid()")).toBe(id(3));
   });
+  it("enforces booking capacity for a shop's local day", async () => {
+    const scheduledAt = await scalar(
+      `select ((date_trunc('week', now() at time zone 'Africa/Nairobi') + interval '7 days 10 hours')
+        at time zone 'Africa/Nairobi')::text`,
+    );
+    await db.query("update shops set booking_capacity=1 where id=$1", [id(20)]);
+    await db.query(
+      "update bookings set scheduled_at=$1,status=case when id=$2 then 'CANCELLED' else 'DECLINED' end where shop_id=$3",
+      [scheduledAt, id(40), id(20)],
+    );
+    await db.exec("set local role service_role");
+
+    const sql = "select create_booking($1,$2,$3,null,$4,null,$5)";
+    const args = [id(2), id(20), id(30)];
+    const bookingId = await scalar(sql, [...args, scheduledAt, "CAPACITY-LAST"]);
+    expect(await scalar("select status from bookings where id=$1", [bookingId])).toBe("REQUESTED");
+    await fails(sql, [...args, scheduledAt, "CAPACITY-OVER"], "CAPACITY_REACHED");
+
+    const nextDay = await scalar("select ($1::timestamptz + interval '1 day')::text", [scheduledAt]);
+    await scalar(sql, [...args, nextDay, "CAPACITY-NEXT"]);
+    expect(
+      (await db.query("select reference from bookings where shop_id=$1 and status not in ('CANCELLED','DECLINED') order by reference", [id(20)])).rows,
+    ).toEqual([{ reference: "CAPACITY-LAST" }, { reference: "CAPACITY-NEXT" }]);
+  });
   it.each(["TRIAL", "ACTIVE", "PAST_DUE"])("blocks booking and workshop writes for %s without changing existing records", async (status) => {
     await db.query("update franchises set status=$1 where id=$2", [status, id(10)]);
     await db.query(
