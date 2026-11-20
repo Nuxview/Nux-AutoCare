@@ -55,6 +55,12 @@ async function quote(lines = quoteLines) {
 async function approve(q: string) {
   await db.query("select decide_repair_quote($1,$2,'APPROVED')", [id(2), q]);
 }
+async function readMigration(file: string) {
+  // PGlite omits pgcrypto and Supabase's platform-only advisor extensions.
+  return (await readFile(path.join("supabase/migrations", file), "utf8"))
+    .replace("create extension if not exists pgcrypto;", "")
+    .replace(/^(?:CREATE|COMMENT ON) EXTENSION "(?:hypopg|index_advisor)"[^;]*;/gm, "");
+}
 describe("workshop database workflows", () => {
   beforeAll(async () => {
     db = new PGlite();
@@ -69,11 +75,7 @@ describe("workshop database workflows", () => {
     for (const file of (await readdir(dir))
       .filter((f) => f.endsWith(".sql"))
       .sort()) {
-      // PGlite omits pgcrypto and Supabase's platform-only advisor extensions.
-      const sql = (await readFile(path.join(dir, file), "utf8"))
-        .replace("create extension if not exists pgcrypto;", "")
-        .replace(/^(?:CREATE|COMMENT ON) EXTENSION "(?:hypopg|index_advisor)"[^;]*;/gm, "");
-      await db.exec(sql);
+      await db.exec(await readMigration(file));
     }
     for (let n = 1; n <= 6; n++) {
       await db.query("insert into auth.users values($1,$2,now())", [
@@ -131,6 +133,18 @@ describe("workshop database workflows", () => {
   });
   afterAll(async () => {
     await db?.close();
+  });
+  it("preserves a pre-existing RLS event trigger and its handler during the snapshot migration", async () => {
+    await db.exec(`
+      create or replace function public.rls_auto_enable() returns event_trigger
+      language plpgsql as $$ begin return; end $$;
+      revoke execute on function public.rls_auto_enable() from service_role;
+    `);
+    const trigger = `select json_build_object('oid', t.oid, 'function', pg_get_functiondef(p.oid), 'acl', p.proacl)
+      from pg_event_trigger t join pg_proc p on p.oid = t.evtfoid where t.evtname = 'ensure_rls'`;
+    const before = await scalar(trigger);
+    await db.exec(await readMigration("20261118180231_remote_schema.sql"));
+    expect(await scalar(trigger)).toEqual(before);
   });
   it("returns null for unset or empty subject claims and preserves valid UUIDs", async () => {
     expect(await scalar("select auth.uid()")).toBeNull();

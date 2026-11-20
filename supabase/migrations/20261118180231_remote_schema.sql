@@ -26,6 +26,13 @@ begin
  return new;
 end $function$;
 
+-- Some Supabase projects already manage this trigger and its handler.
+DO $ensure_rls$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_catalog.pg_event_trigger WHERE evtname = 'ensure_rls') THEN
+    RETURN;
+  END IF;
+
 CREATE OR REPLACE FUNCTION public.rls_auto_enable()
   RETURNS event_trigger
   LANGUAGE plpgsql
@@ -65,13 +72,14 @@ CREATE EVENT TRIGGER "ensure_rls"
   WHEN TAG IN ('CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO')
   EXECUTE FUNCTION "public"."rls_auto_enable"();
 
-COMMENT ON EXTENSION "hypopg" IS 'Hypothetical indexes for PostgreSQL';
-
-COMMENT ON EXTENSION "index_advisor" IS 'Query index advisor';
-
 REVOKE ALL ON FUNCTION "public"."rls_auto_enable"() FROM "postgres";
 
 GRANT EXECUTE ON FUNCTION "public"."rls_auto_enable"() TO "postgres";
 
 GRANT EXECUTE ON FUNCTION "public"."rls_auto_enable"() TO "service_role";
+END;
+$ensure_rls$;
 
+COMMENT ON EXTENSION "hypopg" IS 'Hypothetical indexes for PostgreSQL';
+
+COMMENT ON EXTENSION "index_advisor" IS 'Query index advisor';
