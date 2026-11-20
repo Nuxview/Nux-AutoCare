@@ -1,5 +1,6 @@
 import { jsonError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { assertTenantWritable } from "@/server/auth/context";
 import { garageScope } from "@/server/garage/scope";
 import { readImage } from "@/lib/image-file";
 
@@ -9,6 +10,7 @@ export async function POST(request:Request) {
     const form=await request.formData();
     const file=form.get("file");
     const {bytes,mime}=await readImage(file,2*1024*1024);
+    await assertTenantWritable(scope.franchiseId);
     const admin=createAdminClient();
     const extension=mime.split("/")[1].replace("jpeg","jpg");
     const path=`${scope.franchiseId}/${crypto.randomUUID()}.${extension}`;

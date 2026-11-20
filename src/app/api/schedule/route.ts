@@ -3,6 +3,7 @@ import { ApiError, jsonError } from "@/lib/api";
 import { rolesFor } from "@/lib/permissions";
 import { scheduleSchema } from "@/lib/workshop-validation";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { assertTenantWritable } from "@/server/auth/context";
 import { garageScope } from "@/server/garage/scope";
 import { workshopRpc } from "@/server/workshop";
 export async function GET() {
@@ -105,6 +106,7 @@ export async function PUT(request: Request) {
     if (shop.error) throw shop.error;
     if (!shop.data || (scope.shopId && scope.shopId !== input.shopId))
       throw new ApiError(403, "Branch access denied");
+    await assertTenantWritable(scope.franchiseId);
     const { error } = await admin
       .from("workshop_bays")
       .insert({ shop_id: input.shopId, name: input.name });

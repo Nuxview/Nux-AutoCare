@@ -29,6 +29,14 @@ export function jsonError(error: unknown) {
     );
   if (typeof error === "object" && error !== null && "message" in error) {
     const message = String(error.message);
+    const tenantErrors = {
+      TENANT_READ_ONLY: "This garage is read-only until its subscription is renewed",
+      TENANT_SUSPENDED: "This garage account is not active",
+    };
+    for (const [code, text] of Object.entries(tenantErrors)) {
+      if (message === code)
+        return Response.json({ error: { code, message: text } }, { status: 403 });
+    }
     for (const [code, text] of Object.entries({
       CHECKOUT_OPEN: "Another payment is already open for this invoice. Check its status first.",
       INVOICE_NOT_PAYABLE: "This invoice is no longer payable. Refresh the page.",

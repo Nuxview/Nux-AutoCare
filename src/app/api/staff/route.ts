@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ApiError, jsonError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { assertTenantWritable } from "@/server/auth/context";
 import { garageScope } from "@/server/garage/scope";
 import { rolesFor } from "@/lib/permissions";
 const schema = z.object({
@@ -75,6 +76,7 @@ export async function POST(request: Request) {
       if (shop.error) throw shop.error;
       if (!shop.data) throw new ApiError(403, "Select a branch in your garage");
     }
+    await assertTenantWritable(scope.franchiseId);
     const { data, error } = await admin
       .from("staff_invitations")
       .insert({

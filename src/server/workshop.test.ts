@@ -92,6 +92,14 @@ describe("workshop database workflows", () => {
       [id(10), id(1)],
     );
     await db.query(
+      "insert into plans(id,name,code,monthly_price,max_shops,max_staff) values($1,'Starter','STARTER',3500,1,8)",
+      [id(11)],
+    );
+    await db.query(
+      "insert into subscriptions(franchise_id,plan_id,trial_ends_at,current_period_starts_at,current_period_ends_at) values($1,$2,now()+interval '14 days',now(),now()+interval '14 days')",
+      [id(10), id(11)],
+    );
+    await db.query(
       "insert into shops(id,franchise_id,name,slug,email,address,county) values($1,$2,'Branch','branch','branch@example.com','Street','Nairobi')",
       [id(20), id(10)],
     );
@@ -152,6 +160,62 @@ describe("workshop database workflows", () => {
     expect(await scalar("select auth.uid()")).toBeNull();
     await db.query("select set_config('request.jwt.claim.sub',$1,true)", [id(3)]);
     expect(await scalar("select auth.uid()")).toBe(id(3));
+  });
+  it.each(["TRIAL", "ACTIVE", "PAST_DUE"])("blocks booking and workshop writes for %s without changing existing records", async (status) => {
+    await db.query("update franchises set status=$1 where id=$2", [status, id(10)]);
+    await db.query(
+      `update subscriptions set
+        trial_ends_at=case when $1='TRIAL' then clock_timestamp() else trial_ends_at end,
+        current_period_ends_at=case when $1='ACTIVE' then clock_timestamp() else current_period_ends_at end
+        where franchise_id=$2`,
+      [status, id(10)],
+    );
+    await db.query("update bookings set status='REQUESTED' where id=$1", [id(41)]);
+    await db.exec("set local role service_role");
+    await fails(
+      "select create_booking($1,$2,$3,null,date_trunc('week',now())+interval '14 days 7 hours',null,'BLOCKED')",
+      [id(2), id(20), id(30)], status === "PAST_DUE" ? "SHOP_NOT_FOUND" : "TENANT_READ_ONLY",
+    );
+    await fails("select decide_booking($1,$2,'CONFIRMED',null)", [id(41), id(1)], "TENANT_READ_ONLY");
+    expect(await scalar("select status from bookings where id=$1", [id(41)])).toBe("REQUESTED");
+    await db.query("update bookings set status='CONFIRMED' where id=$1", [id(41)]);
+    await fails("select create_job_from_booking($1,$2,'BLOCKED')", [id(41), id(1)], "TENANT_READ_ONLY");
+    await fails("select send_repair_quote($1,$2,$3::jsonb,null)", [id(1), id(50), JSON.stringify(quoteLines)], "TENANT_READ_ONLY");
+    expect(await scalar("select count(*) from jobs")).toBe(1);
+    expect(await scalar("select count(*) from repair_quotes")).toBe(0);
+  });
+  it("restores writes after a paid renewal and fails closed for a missing subscription", async () => {
+    await db.exec("set local role service_role");
+    await db.query("update franchises set status='PAST_DUE' where id=$1", [id(10)]);
+    await fails("select assert_tenant_writable($1)", [id(10)], "TENANT_READ_ONLY");
+    await db.query("update subscriptions set trial_ends_at=now()-interval '1 day', current_period_ends_at=now()+interval '1 month' where franchise_id=$1", [id(10)]);
+    await db.query("update franchises set status='ACTIVE' where id=$1", [id(10)]);
+    expect(await quote()).toEqual(expect.any(String));
+    await db.query("delete from subscriptions where franchise_id=$1", [id(10)]);
+    await fails("select assert_tenant_writable($1)", [id(10)], "TENANT_READ_ONLY");
+  });
+  it("preserves a customer's quote and payment actions while garage job writes are paused", async () => {
+    const pendingQuote = await quote();
+    await db.query(
+      "insert into invoices(id,number,franchise_id,shop_id,customer_id,status,subtotal,tax_amount,total_amount) values($1,'EXISTING',$2,$3,$4,'ISSUED',1000,0,1000)",
+      [id(900), id(10), id(20), id(2)],
+    );
+    await db.query("update franchises set status='PAST_DUE' where id=$1", [id(10)]);
+    await db.exec("set local role service_role");
+    await approve(pendingQuote);
+    expect(await scalar("select status from repair_quotes where id=$1", [pendingQuote])).toBe("APPROVED");
+    await fails("select transition_repair_job($1,$2,'IN_PROGRESS')", [id(1), id(50)], "TENANT_READ_ONLY");
+    await fails("select issue_repair_invoice($1,$2,'BLOCKED')", [id(50), id(1)], "TENANT_READ_ONLY");
+    await fails("select record_service_mileage($1,$2,12000)", [id(1), id(50)], "TENANT_READ_ONLY");
+    const payment = await scalar("select reserve_sandbox_payment($1,$2,'STRIPE')", [id(900), id(2)]) as { id: string; reference: string };
+    await db.query("update payments set provider_reference='cs_test_read_only',status='PROCESSING' where id=$1", [payment.id]);
+    expect(await scalar("select settle_verified_invoice_payment($1,'STRIPE','cs_test_read_only',100000,'KES',true)", [payment.reference])).toBe(true);
+    expect(await scalar("select amount_paid from invoices where id=$1", [id(900)])).toBe("1000.00");
+  });
+  it("denies browser roles access to the entitlement check", async () => {
+    for (const role of ["anon", "authenticated"]) {
+      expect(await scalar("select has_function_privilege($1,'public.assert_tenant_writable(uuid)','execute')", [role])).toBe(false);
+    }
   });
   it("keeps operational table access server-only for every CRUD operation", async () => {
     for (const table of [
@@ -599,6 +663,13 @@ describe("workshop database workflows", () => {
       [id(4), id(110), "person4@example.com"],
       "INVITATION_INVALID",
     );
+    await db.query("update franchises set status='PAST_DUE' where id=$1", [id(10)]);
+    await fails(
+      "select accept_staff_invitation($1,$2,$3)",
+      [id(5), id(110), "person5@example.com"],
+      "TENANT_READ_ONLY",
+    );
+    await db.query("update franchises set status='TRIAL' where id=$1", [id(10)]);
     await db.query("select accept_staff_invitation($1,$2,$3)", [
       id(5),
       id(110),
