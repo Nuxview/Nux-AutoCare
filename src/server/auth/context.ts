@@ -26,6 +26,11 @@ export function assertTenantActive(franchise: { status: string } | { status: str
   if (tenant && ["SUSPENDED", "CANCELLED"].includes(tenant.status)) throw new ApiError(403, "This garage account is not active", "TENANT_SUSPENDED");
 }
 
+export async function assertTenantWritable(franchiseId: string) {
+  const { error } = await createAdminClient().rpc("assert_tenant_writable", { p_franchise_id: franchiseId });
+  if (error) throw error;
+}
+
 export async function requireTenantMembership(
   franchiseId: string,
   shopId?: string,

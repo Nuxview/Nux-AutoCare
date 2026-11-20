@@ -1,15 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
-const { getUser, from } = vi.hoisted(() => ({
+const { getUser, from, rpc, upload } = vi.hoisted(() => ({
   getUser: vi.fn(),
   from: vi.fn(),
+  rpc: vi.fn(),
+  upload: vi.fn(),
 }));
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({ auth: { getUser } }),
 }));
 vi.mock("@/lib/supabase/admin", () => ({
-  createAdminClient: () => ({ from }),
+  createAdminClient: () => ({ from, rpc, storage: { from: () => ({ upload }) } }),
 }));
 
 import { bookingAccess, garageScope, jobAccess } from "./scope";
@@ -18,6 +20,9 @@ import { GET as dashboard } from "@/app/api/dashboard/route";
 import { GET as invoices } from "@/app/api/invoices/route";
 import { GET as workspace } from "@/app/api/me/route";
 import { assertTenantActive } from "@/server/auth/context";
+import { POST as addStock } from "@/app/api/inventory/route";
+import { POST as postRepairPhoto } from "@/app/api/repair-photos/route";
+import { PATCH as revokeStaffAccess } from "@/app/api/staff/route";
 
 const profile = {
   id: "user-a", email: "owner@example.com", first_name: "Test",
@@ -28,6 +33,8 @@ let membership: {
   role: string; franchise: { status: string };
 } | null;
 let membershipError: { message: string } | null;
+let bookingCustomerId: string;
+const recordId = "11111111-1111-4111-8111-111111111111";
 
 function query(table: string) {
   return {
@@ -40,7 +47,7 @@ function query(table: string) {
     maybeSingle: async () => ({
       data: table === "memberships" ? membership : {
         id: "repair-a", franchise_id: "garage-a", shop_id: "branch-a",
-        customer_id: "customer-b", assigned_mechanic_id: "member-a",
+        customer_id: table === "bookings" ? bookingCustomerId : "customer-b", assigned_mechanic_id: "member-a",
       },
       error: table === "memberships" ? membershipError : null,
     }),
@@ -61,6 +68,9 @@ beforeEach(() => {
     role: "SHOP_MANAGER", franchise: { status: "ACTIVE" },
   };
   membershipError = null;
+  bookingCustomerId = "customer-b";
+  rpc.mockResolvedValue({ error: null });
+  upload.mockResolvedValue({ error: null });
   getUser.mockResolvedValue({ data: { user: { id: profile.id } }, error: null });
   from.mockImplementation(query);
 });
@@ -123,6 +133,69 @@ describe.each(paths)("$name request budget", ({ run, entity }) => {
 });
 
 describe("garage access boundaries", () => {
+  it("keeps scoped reads available and rejects stock and task mutations for a read-only garage", async () => {
+    membership!.franchise.status = "PAST_DUE";
+    rpc.mockResolvedValue({ error: { message: "TENANT_READ_ONLY" } });
+    expect((await dashboard()).status).toBe(200);
+    await expect(jobAccess("repair-a")).resolves.toMatchObject({ job: { id: "repair-a" } });
+    expect(rpc).not.toHaveBeenCalled();
+    from.mockClear();
+
+    await expect(jobAccess("repair-a", true)).rejects.toMatchObject({ message: "TENANT_READ_ONLY" });
+    membership!.shop_id = recordId;
+    const response = await addStock(new Request("http://localhost/api/inventory", {
+      method: "POST",
+      body: JSON.stringify({ shopId: recordId, sku: "PLUG", name: "Spark plug", quantityOnHand: 4, reorderLevel: 1, unitCost: 200, sellingPrice: 500 }),
+    }));
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: { code: "TENANT_READ_ONLY" } });
+    expect(rpc).toHaveBeenCalledWith("assert_tenant_writable", { p_franchise_id: "garage-a" });
+    expect(from).not.toHaveBeenCalledWith("inventory_items");
+  });
+
+  it("allows only the customer to upload a repair photo when the garage is read-only", async () => {
+    rpc.mockResolvedValue({ error: { message: "TENANT_READ_ONLY" } });
+    const insert = vi.fn().mockReturnValue(query("repair_photos"));
+    from.mockImplementation((table) => table === "repair_photos" ? { insert } : query(table));
+    const request = () => {
+      const form = new FormData();
+      form.set("bookingId", recordId);
+      form.set("file", new File([new Uint8Array([255, 216, 255])], "repair.jpg", { type: "image/jpeg" }));
+      return new Request("http://localhost/api/repair-photos", { method: "POST", body: form });
+    };
+    expect((await postRepairPhoto(request())).status).toBe(403);
+    expect(upload).not.toHaveBeenCalled();
+
+    bookingCustomerId = profile.id;
+    rpc.mockClear();
+    expect((await postRepairPhoto(request())).status).toBe(201);
+    expect(upload).toHaveBeenCalledOnce();
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ uploaded_by: profile.id }));
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("allows an owner to deactivate staff and revoke invitations during a read-only period", async () => {
+    membership!.role = "FRANCHISE_OWNER";
+    membership!.franchise.status = "PAST_DUE";
+    rpc.mockResolvedValue({ error: { message: "TENANT_READ_ONLY" } });
+    const update = vi.fn((table: string) => query(table));
+    from.mockImplementation((table) => ({
+      ...query(table),
+      update: (fields: Record<string, unknown>) => {
+        expect(fields).toEqual(table === "memberships" ? { is_active: false } : { revoked_at: expect.any(String) });
+        return update(table);
+      },
+    }));
+    for (const kind of ["member", "invitation"]) {
+      const response = await revokeStaffAccess(new Request("http://localhost/api/staff", {
+        method: "PATCH", body: JSON.stringify({ kind, id: recordId }),
+      }));
+      expect(response.status).toBe(200);
+    }
+    expect(update.mock.calls).toEqual([["memberships"], ["staff_invitations"]]);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
   it("returns workspace identity and dashboard data together with separate server timings", async () => {
     const response = await dashboard();
     expect(response.status).toBe(200);

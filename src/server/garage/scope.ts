@@ -2,6 +2,7 @@ import { ApiError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   assertTenantActive,
+  assertTenantWritable,
   requireAuthenticatedUser,
   requireTenantMembership,
 } from "@/server/auth/context";
@@ -39,7 +40,7 @@ export async function garageScope(
   };
 }
 
-export async function bookingAccess(bookingId: string) {
+export async function bookingAccess(bookingId: string, access: "read" | "write" = "read") {
   const user = await requireAuthenticatedUser();
   const admin = createAdminClient();
   const { data: booking, error } = await admin
@@ -78,6 +79,7 @@ export async function bookingAccess(bookingId: string) {
           "FORBIDDEN",
         );
     }
+    if (access === "write") await assertTenantWritable(booking.franchise_id);
   }
   return { user, booking };
 }
@@ -121,6 +123,7 @@ export async function jobAccess(jobId: string, management = false) {
         "This repair is not assigned to you",
         "FORBIDDEN",
       );
+    if (management) await assertTenantWritable(job.franchise_id);
   }
   return { user, job };
 }

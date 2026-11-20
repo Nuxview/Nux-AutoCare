@@ -26,7 +26,7 @@ export async function POST(request:Request) {
     const caption=z.string().trim().max(240).parse(form.get("caption")??"");
     const file=form.get("file");
     const {bytes,mime}=await readImage(file,5*1024*1024);
-    const {user}=await bookingAccess(bookingId);
+    const {user}=await bookingAccess(bookingId,"write");
     const admin=createAdminClient();
     const extension=mime.split("/")[1].replace("jpeg","jpg");
     const path=`${bookingId}/${crypto.randomUUID()}.${extension}`;

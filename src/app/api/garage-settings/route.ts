@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ApiError,jsonError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { camelize } from "@/lib/supabase/format";
+import { assertTenantWritable } from "@/server/auth/context";
 import { garageScope } from "@/server/garage/scope";
 
 const hour=z.object({open:z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),close:z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/)}).nullable();
@@ -27,6 +28,7 @@ export async function PATCH(request:Request) {
     if(lookupError) throw lookupError;
     if(!shop) throw new ApiError(404,"Shop not found","NOT_FOUND");
     if(input.franchiseName&&scope.role!=="FRANCHISE_OWNER"&&scope.role!=="FRANCHISE_ADMIN") throw new ApiError(403,"Only the garage owner can change the business name","FORBIDDEN");
+    await assertTenantWritable(scope.franchiseId);
     const {error}=await admin.from("shops").update({name:input.name,accepts_bookings:input.acceptsBookings,opening_hours:input.openingHours}).eq("id",input.shopId);
     if(error) throw error;
     if(input.franchiseName) {
