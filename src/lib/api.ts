@@ -36,6 +36,7 @@ export function jsonError(error: unknown) {
       APPROVAL_REQUIRED: "The customer must approve the latest quote first.",
       PARTS_MISMATCH: "Record all approved stock parts used before invoicing.",
       JOB_CLOSED: "This repair is closed or invoiced.",
+      JOB_READY: "Repair steps must remain completed while the vehicle is ready for collection.",
       INVALID_MILEAGE: "Mileage cannot decrease. Enter a valid reading.",
     })) {
       if (message.includes(code))

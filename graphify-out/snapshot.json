@@ -1,0 +1,18 @@
+{
+  "base_commit": "4b0d4369dddac3b2a001c46ea0949816d112bd10",
+  "branch": "fix/atomic-repair-status",
+  "working_tree_snapshot": true,
+  "files_detected": 163,
+  "ast_files_extracted": 155,
+  "semantic_files_extracted": 8,
+  "nodes": 859,
+  "edges": 2345,
+  "communities": 49,
+  "health_flags": {
+    "dangling_endpoint_edges": 3,
+    "self_loop_edges": 2,
+    "undirected_same_endpoint_collapsed_edges": 75
+  },
+  "corrected_sql_jobs_references": 14,
+  "token_usage_status": "host_agent_usage_unavailable"
+}

@@ -55,6 +55,12 @@ async function quote(lines = quoteLines) {
 async function approve(q: string) {
   await db.query("select decide_repair_quote($1,$2,'APPROVED')", [id(2), q]);
 }
+async function readMigration(file: string) {
+  // PGlite omits pgcrypto and Supabase's platform-only advisor extensions.
+  return (await readFile(path.join("supabase/migrations", file), "utf8"))
+    .replace("create extension if not exists pgcrypto;", "")
+    .replace(/^(?:CREATE|COMMENT ON) EXTENSION "(?:hypopg|index_advisor)"[^;]*;/gm, "");
+}
 describe("workshop database workflows", () => {
   beforeAll(async () => {
     db = new PGlite();
@@ -69,12 +75,7 @@ describe("workshop database workflows", () => {
     for (const file of (await readdir(dir))
       .filter((f) => f.endsWith(".sql"))
       .sort()) {
-      // PGlite includes gen_random_uuid in core but does not bundle pgcrypto.
-      const sql = (await readFile(path.join(dir, file), "utf8")).replace(
-        "create extension if not exists pgcrypto;",
-        "",
-      );
-      await db.exec(sql);
+      await db.exec(await readMigration(file));
     }
     for (let n = 1; n <= 6; n++) {
       await db.query("insert into auth.users values($1,$2,now())", [
@@ -132,6 +133,18 @@ describe("workshop database workflows", () => {
   });
   afterAll(async () => {
     await db?.close();
+  });
+  it("preserves a pre-existing RLS event trigger and its handler during the snapshot migration", async () => {
+    await db.exec(`
+      create or replace function public.rls_auto_enable() returns event_trigger
+      language plpgsql as $$ begin return; end $$;
+      revoke execute on function public.rls_auto_enable() from service_role;
+    `);
+    const trigger = `select json_build_object('oid', t.oid, 'function', pg_get_functiondef(p.oid), 'acl', p.proacl)
+      from pg_event_trigger t join pg_proc p on p.oid = t.evtfoid where t.evtname = 'ensure_rls'`;
+    const before = await scalar(trigger);
+    await db.exec(await readMigration("20261118180231_remote_schema.sql"));
+    expect(await scalar(trigger)).toEqual(before);
   });
   it("returns null for unset or empty subject claims and preserves valid UUIDs", async () => {
     expect(await scalar("select auth.uid()")).toBeNull();
@@ -646,6 +659,205 @@ describe("workshop database workflows", () => {
         id(6),
       ]),
     ).toBeTruthy();
+  });
+  describe("atomic repair status transitions", () => {
+    async function prepareRepair() {
+      await approve(await quote());
+      await db.query(
+        "insert into repair_tasks(id,job_id,title,status) values($1,$2,'Fit spark plugs','COMPLETED')",
+        [id(90), id(50)],
+      );
+      await db.query("update jobs set status='IN_PROGRESS' where id=$1", [id(50)]);
+    }
+    const transition = (status: string, actor = id(1)) =>
+      db.query("select transition_repair_job($1,$2,$3)", [actor, id(50), status]);
+    const notices = () => scalar("select count(*) from notifications where type='REPAIR_STATUS'");
+
+    it("saves handover once and preserves completed_at on retries", async () => {
+      await prepareRepair();
+      await db.exec("set local role service_role");
+      await transition("READY", id(3));
+      await transition("READY", id(3));
+      expect(await scalar("select status from jobs where id=$1", [id(50)])).toBe("READY");
+      expect(await scalar("select status from bookings where id=$1", [id(40)])).toBe("READY_FOR_COLLECTION");
+      expect(await notices()).toBe(1);
+      expect((await db.query("select user_id,data from notifications where type='REPAIR_STATUS'")).rows).toEqual([
+        { user_id: id(2), data: { jobId: id(50), status: "READY" } },
+      ]);
+      await transition("COMPLETED");
+      expect(await scalar("select completed_at from jobs where id=$1", [id(50)])).toBeTruthy();
+      await db.query("update jobs set completed_at='2026-01-01T00:00:00Z' where id=$1", [id(50)]);
+      const completedAt = await scalar("select completed_at from jobs where id=$1", [id(50)]);
+      await transition("COMPLETED");
+      expect(await scalar("select completed_at from jobs where id=$1", [id(50)])).toEqual(completedAt);
+      expect(await scalar("select status from bookings where id=$1", [id(40)])).toBe("COMPLETED");
+      expect(await notices()).toBe(2);
+    });
+
+    it.each([
+      ["bookings", "READY"], ["notifications", "READY"],
+      ["bookings", "COMPLETED"], ["notifications", "COMPLETED"],
+    ])("rolls everything back if %s fails during %s, then permits a clean retry", async (table, target) => {
+      await prepareRepair();
+      if (target === "COMPLETED") await transition("READY");
+      const beforeStatus = target === "READY" ? "IN_PROGRESS" : "READY";
+      const beforeBooking = target === "READY" ? "CONFIRMED" : "READY_FOR_COLLECTION";
+      const beforeNotices = target === "READY" ? 0 : 1;
+      await db.exec(`
+        create function pg_temp.reject_status_write() returns trigger language plpgsql as $$
+        begin raise exception 'INJECTED_STATUS_FAILURE'; end $$;
+        create trigger reject_status_write before ${table === "bookings" ? "update" : "insert"} on ${table}
+        for each row execute function pg_temp.reject_status_write();
+      `);
+      await fails("select transition_repair_job($1,$2,$3)", [id(1), id(50), target], "INJECTED_STATUS_FAILURE");
+      expect(await scalar("select status from jobs where id=$1", [id(50)])).toBe(beforeStatus);
+      expect(await scalar("select completed_at from jobs where id=$1", [id(50)])).toBeNull();
+      expect(await scalar("select status from bookings where id=$1", [id(40)])).toBe(beforeBooking);
+      expect(await notices()).toBe(beforeNotices);
+      await db.exec(`drop trigger reject_status_write on ${table}`);
+      await transition(target);
+      await transition(target);
+      expect(await scalar("select status from bookings where id=$1", [id(40)])).toBe(
+        target === "READY" ? "READY_FOR_COLLECTION" : "COMPLETED",
+      );
+      expect(await notices()).toBe(beforeNotices + 1);
+    });
+
+    it("repairs legacy partial READY/COMPLETED writes without duplicate notices", async () => {
+      await prepareRepair();
+      for (const status of ["READY", "COMPLETED"]) {
+        await db.query("update jobs set status=$1 where id=$2", [status, id(50)]);
+        await transition(status);
+        await db.query("update bookings set status='IN_PROGRESS' where id=$1", [id(40)]);
+        await transition(status);
+        expect(await scalar("select status from bookings where id=$1", [id(40)])).toBe(
+          status === "READY" ? "READY_FOR_COLLECTION" : "COMPLETED",
+        );
+      }
+      expect(await notices()).toBe(2);
+    });
+
+    it("supports repairs without a linked booking", async () => {
+      await prepareRepair();
+      await db.query("update jobs set booking_id=null where id=$1", [id(50)]);
+      await transition("READY");
+      await transition("COMPLETED");
+      expect(await scalar("select status from jobs where id=$1", [id(50)])).toBe("COMPLETED");
+      expect(await scalar("select status from bookings where id=$1", [id(40)])).toBe("CONFIRMED");
+      expect(await notices()).toBe(2);
+    });
+
+    it.each(["PENDING", "IN_PROGRESS"])("rejects a delayed %s task write after READY commits", async (status) => {
+      await prepareRepair();
+      await db.query("update jobs set status='APPROVED' where id=$1", [id(50)]);
+      expect(await scalar("select status from jobs where id=$1", [id(50)])).toBe("APPROVED");
+      await transition("IN_PROGRESS");
+      await transition("READY");
+      await db.exec("set local role service_role");
+      await fails("update repair_tasks set status=$1 where id=$2 returning status", [status, id(90)], "JOB_READY");
+      expect(await scalar("select status from repair_tasks where id=$1", [id(90)])).toBe("COMPLETED");
+      expect(await scalar("select status from jobs where id=$1", [id(50)])).toBe("READY");
+      expect(await scalar("select status from bookings where id=$1", [id(40)])).toBe("READY_FOR_COLLECTION");
+      expect(await notices()).toBe(1);
+    });
+
+    it.each(["PENDING", "IN_PROGRESS"])("rejects a new unfinished %s task after READY", async (status) => {
+      await prepareRepair();
+      await transition("READY");
+      await fails("insert into repair_tasks(id,job_id,title,status) values($1,$2,'Late step',$3)", [id(91), id(50), status], "JOB_READY");
+      expect(await scalar("select count(*) from repair_tasks where job_id=$1", [id(50)])).toBe(1);
+    });
+
+    it.each(["approved quote", "legacy invoice"])("preserves task edits before handover and completed-task notes at READY with %s", async (approval) => {
+      await prepareRepair();
+      if (approval === "legacy invoice") {
+        await db.query("insert into invoices(number,franchise_id,shop_id,customer_id,job_id,subtotal,tax_amount,total_amount) values('READY-GUARD-LEGACY',$1,$2,$3,$4,1000,0,1000)", [id(10), id(20), id(2), id(50)]);
+        await db.query("update jobs set current_quote_id=null where id=$1", [id(50)]);
+      }
+      await db.query("update repair_tasks set status='PENDING' where id=$1", [id(90)]);
+      await db.query("update repair_tasks set status='IN_PROGRESS' where id=$1", [id(90)]);
+      await db.query("update repair_tasks set status='COMPLETED' where id=$1", [id(90)]);
+      await transition("READY");
+      await db.query("update repair_tasks set note='Final inspection recorded' where id=$1", [id(90)]);
+      expect(await scalar("select note from repair_tasks where id=$1", [id(90)])).toBe("Final inspection recorded");
+      expect(await scalar("select status from repair_tasks where id=$1", [id(90)])).toBe("COMPLETED");
+    });
+
+    it("checks every current stage against the three supported targets", async () => {
+      await prepareRepair();
+      const allowed: Record<string, string[]> = {
+        OPEN: ["IN_PROGRESS"], DIAGNOSING: ["IN_PROGRESS"], AWAITING_APPROVAL: [],
+        APPROVED: ["IN_PROGRESS"], IN_PROGRESS: ["READY"], QUALITY_CHECK: ["IN_PROGRESS", "READY"],
+        READY: ["COMPLETED"], COMPLETED: [], CANCELLED: [],
+      };
+      for (const [current, targets] of Object.entries(allowed)) {
+        for (const target of ["IN_PROGRESS", "READY", "COMPLETED"]) {
+          await db.exec("savepoint stage_case");
+          await db.query("update jobs set status=$1 where id=$2", [current, id(50)]);
+          if (current === target || targets.includes(target)) {
+            await transition(target);
+            expect(await scalar("select status from jobs where id=$1", [id(50)])).toBe(target);
+          } else {
+            await fails("select transition_repair_job($1,$2,$3)", [id(1), id(50), target],
+              ["COMPLETED", "CANCELLED"].includes(current) ? "JOB_CLOSED" : "INVALID_STAGE_TRANSITION");
+          }
+          await db.exec("rollback to savepoint stage_case; release savepoint stage_case");
+        }
+      }
+    });
+
+    it("requires completed steps and current approval, preserving legacy invoice handover", async () => {
+      await approve(await quote());
+      await db.query("update jobs set status='IN_PROGRESS' where id=$1", [id(50)]);
+      await fails("select transition_repair_job($1,$2,'READY')", [id(1), id(50)], "TASKS_INCOMPLETE");
+      await db.query("insert into repair_tasks(id,job_id,title) values($1,$2,'Repair')", [id(90), id(50)]);
+      await fails("select transition_repair_job($1,$2,'READY')", [id(1), id(50)], "TASKS_INCOMPLETE");
+      await db.query("update repair_tasks set status='COMPLETED' where id=$1", [id(90)]);
+      await db.query("update repair_quotes set status='DECLINED' where job_id=$1", [id(50)]);
+      await fails("select transition_repair_job($1,$2,'READY')", [id(1), id(50)], "APPROVAL_REQUIRED");
+      await db.query("update jobs set current_quote_id=null where id=$1", [id(50)]);
+      await db.query(
+        "insert into invoices(number,franchise_id,shop_id,customer_id,job_id,subtotal,tax_amount,total_amount) values('STATUS-LEGACY',$1,$2,$3,$4,1000,0,1000)",
+        [id(10), id(20), id(2), id(50)],
+      );
+      await transition("READY");
+      await transition("COMPLETED");
+      expect(await notices()).toBe(2);
+    });
+
+    it.each([id(2), id(4), id(6)])("denies customer, nonmember and accountant actors (%s)", async (actor) => {
+      await prepareRepair();
+      await fails("select transition_repair_job($1,$2,'READY')", [actor, id(50)], "FORBIDDEN");
+      expect(await notices()).toBe(0);
+    });
+
+    it.each(["branch", "assignment", "membership", "profile", "SUSPENDED", "CANCELLED"])("preserves the %s access check, including retries", async (restriction) => {
+      await prepareRepair();
+      await transition("READY");
+      if (restriction === "branch") {
+        await db.query("insert into shops(id,franchise_id,name,slug,email,address,county) values($1,$2,'Other','other','other@example.com','Street','Nairobi')", [id(21), id(10)]);
+        await db.query("update memberships set shop_id=$1 where id=$2", [id(21), id(71)]);
+      }
+      if (restriction === "assignment") await db.query("update jobs set assigned_mechanic_id=null where id=$1", [id(50)]);
+      if (restriction === "membership") await db.query("update memberships set is_active=false where id=$1", [id(71)]);
+      if (restriction === "profile") await db.query("update profiles set is_active=false where id=$1", [id(3)]);
+      if (["SUSPENDED", "CANCELLED"].includes(restriction)) await db.query("update franchises set status=$1 where id=$2", [restriction, id(10)]);
+      for (const status of ["READY", "COMPLETED"]) {
+        await fails("select transition_repair_job($1,$2,$3)", [id(3), id(50), status], "FORBIDDEN");
+      }
+      expect(await notices()).toBe(1);
+    });
+
+    it("rejects unsupported targets and missing jobs and remains server-only", async () => {
+      for (const status of ["CANCELLED", "QUALITY_CHECK", null]) {
+        await fails("select transition_repair_job($1,$2,$3)", [id(1), id(50), status], "INVALID_STAGE_TRANSITION");
+      }
+      await fails("select transition_repair_job($1,$2,'READY')", [id(1), id(999)], "NOT_FOUND");
+      for (const role of ["anon", "authenticated"]) {
+        expect(await scalar("select has_function_privilege($1,'public.transition_repair_job(uuid,uuid,text)','execute')", [role])).toBe(false);
+      }
+      expect(await scalar("select has_function_privilege('service_role','public.transition_repair_job(uuid,uuid,text)','execute')")).toBe(true);
+    });
   });
   it("preserves handover for legacy invoices without retroactive approval", async () => {
     await db.query(

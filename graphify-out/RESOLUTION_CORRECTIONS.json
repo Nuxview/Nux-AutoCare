@@ -1,0 +1,142 @@
+[
+  {
+    "source": "supabase_migrations_20261027081741_issue_repair_invoice_public_issue_repair_invoice",
+    "target": "github_workflows_ci_jobs",
+    "relation": "reads_from",
+    "confidence": "EXTRACTED",
+    "source_file": "supabase/migrations/20261027081741_issue_repair_invoice.sql",
+    "source_location": "L5",
+    "weight": 1.0,
+    "_origin": "ast"
+  },
+  {
+    "source": "supabase_migrations_20261102133752_workshop_workflows_public_send_repair_quote",
+    "target": "github_workflows_ci_jobs",
+    "relation": "reads_from",
+    "confidence": "EXTRACTED",
+    "source_file": "supabase/migrations/20261102133752_workshop_workflows.sql",
+    "source_location": "L71",
+    "weight": 1.0,
+    "_origin": "ast"
+  },
+  {
+    "source": "supabase_migrations_20261102133752_workshop_workflows_public_decide_repair_quote",
+    "target": "github_workflows_ci_jobs",
+    "relation": "reads_from",
+    "confidence": "EXTRACTED",
+    "source_file": "supabase/migrations/20261102133752_workshop_workflows.sql",
+    "source_location": "L100",
+    "weight": 1.0,
+    "_origin": "ast"
+  },
+  {
+    "source": "supabase_migrations_20261102133752_workshop_workflows_public_record_job_parts",
+    "target": "github_workflows_ci_jobs",
+    "relation": "reads_from",
+    "confidence": "EXTRACTED",
+    "source_file": "supabase/migrations/20261102133752_workshop_workflows.sql",
+    "source_location": "L113",
+    "weight": 1.0,
+    "_origin": "ast"
+  },
+  {
+    "source": "supabase_migrations_20261102133752_workshop_workflows_public_issue_repair_invoice",
+    "target": "github_workflows_ci_jobs",
+    "relation": "reads_from",
+    "confidence": "EXTRACTED",
+    "source_file": "supabase/migrations/20261102133752_workshop_workflows.sql",
+    "source_location": "L139",
+    "weight": 1.0,
+    "_origin": "ast"
+  },
+  {
+    "source": "supabase_migrations_20261102133752_workshop_workflows_public_guard_approved_repair",
+    "target": "github_workflows_ci_jobs",
+    "relation": "reads_from",
+    "confidence": "EXTRACTED",
+    "source_file": "supabase/migrations/20261102133752_workshop_workflows.sql",
+    "source_location": "L192",
+    "weight": 1.0,
+    "_origin": "ast"
+  },
+  {
+    "source": "supabase_migrations_20261102133752_workshop_workflows_public_guard_approved_repair",
+    "target": "github_workflows_ci_jobs",
+    "relation": "reads_from",
+    "confidence": "EXTRACTED",
+    "source_file": "supabase/migrations/20261102133752_workshop_workflows.sql",
+    "source_location": "L193",
+    "weight": 1.0,
+    "_origin": "ast"
+  },
+  {
+    "source": "supabase_migrations_20261102133752_workshop_workflows_public_record_service_mileage",
+    "target": "github_workflows_ci_jobs",
+    "relation": "reads_from",
+    "confidence": "EXTRACTED",
+    "source_file": "supabase/migrations/20261102133752_workshop_workflows.sql",
+    "source_location": "L224",
+    "weight": 1.0,
+    "_origin": "ast"
+  },
+  {
+    "source": "supabase_migrations_20261117000100_atomic_repair_status_public_transition_repair_job",
+    "target": "github_workflows_ci_jobs",
+    "relation": "reads_from",
+    "confidence": "EXTRACTED",
+    "source_file": "supabase/migrations/20261117000100_atomic_repair_status.sql",
+    "source_location": "L7",
+    "weight": 1.0,
+    "_origin": "ast"
+  },
+  {
+    "source": "supabase_migrations_20261117000100_atomic_repair_status_public_transition_repair_job",
+    "target": "github_workflows_ci_jobs",
+    "relation": "reads_from",
+    "confidence": "EXTRACTED",
+    "source_file": "supabase/migrations/20261117000100_atomic_repair_status.sql",
+    "source_location": "L8",
+    "weight": 1.0,
+    "_origin": "ast"
+  },
+  {
+    "source": "supabase_migrations_20261118000100_guard_ready_repair_tasks_public_guard_approved_repair",
+    "target": "github_workflows_ci_jobs",
+    "relation": "reads_from",
+    "confidence": "EXTRACTED",
+    "source_file": "supabase/migrations/20261118000100_guard_ready_repair_tasks.sql",
+    "source_location": "L6",
+    "weight": 1.0,
+    "_origin": "ast"
+  },
+  {
+    "source": "supabase_migrations_20261118180231_remote_schema_public_guard_approved_repair",
+    "target": "github_workflows_ci_jobs",
+    "relation": "reads_from",
+    "confidence": "EXTRACTED",
+    "source_file": "supabase/migrations/20261118180231_remote_schema.sql",
+    "source_location": "L16",
+    "weight": 1.0,
+    "_origin": "ast"
+  },
+  {
+    "source": "supabase_migrations_20261118180231_remote_schema_public_guard_approved_repair",
+    "target": "github_workflows_ci_jobs",
+    "relation": "reads_from",
+    "confidence": "EXTRACTED",
+    "source_file": "supabase/migrations/20261118180231_remote_schema.sql",
+    "source_location": "L17",
+    "weight": 1.0,
+    "_origin": "ast"
+  },
+  {
+    "source": "supabase_migrations_20261118190000_restore_ready_repair_guard_public_guard_approved_repair",
+    "target": "github_workflows_ci_jobs",
+    "relation": "reads_from",
+    "confidence": "EXTRACTED",
+    "source_file": "supabase/migrations/20261118190000_restore_ready_repair_guard.sql",
+    "source_location": "L7",
+    "weight": 1.0,
+    "_origin": "ast"
+  }
+]

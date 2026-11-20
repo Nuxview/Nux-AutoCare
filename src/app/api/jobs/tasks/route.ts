@@ -96,7 +96,8 @@ export async function PATCH(request: Request) {
           ? { status: "IN_PROGRESS" }
           : {}),
       })
-      .eq("id", existing.job_id);
+      .eq("id", existing.job_id)
+      .eq("status", job.status);
     if (touchError) throw touchError;
     return Response.json({ task: camelize(data) });
   } catch (error) {

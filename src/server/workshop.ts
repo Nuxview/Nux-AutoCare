@@ -11,6 +11,9 @@ export async function workshopRpc(name: string, args: Record<string, unknown>) {
   if (error) {
     const messages: Record<string, string> = {
       FORBIDDEN: "You do not have permission for this action.",
+      NOT_FOUND: "Repair job not found",
+      INVALID_STAGE_TRANSITION: "This repair cannot move to the requested stage.",
+      TASKS_INCOMPLETE: "Complete every repair step first",
       APPROVAL_REQUIRED:
         "The customer must approve the latest quote before work continues.",
       QUOTE_CHANGED:
@@ -35,7 +38,7 @@ export async function workshopRpc(name: string, args: Record<string, unknown>) {
     );
     if (code)
       throw new ApiError(
-        code === "FORBIDDEN" ? 403 : 409,
+        code === "NOT_FOUND" ? 404 : code === "FORBIDDEN" ? 403 : 409,
         messages[code],
         code,
       );

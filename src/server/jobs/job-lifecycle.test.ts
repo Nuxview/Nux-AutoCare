@@ -36,7 +36,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 
 import { createJobFromBooking } from "./service";
 import { PATCH as updateJobStatusRoute } from "@/app/api/jobs/status/route";
-import { isValidJobTransition } from "@/server/jobs/transitions";
+import { PATCH as updateTaskRoute } from "@/app/api/jobs/tasks/route";
 
 const VALID_BOOKING_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const VALID_JOB_ID = "77777777-7777-4777-8777-777777777777";
@@ -175,179 +175,101 @@ describe("AREA 3: Job lifecycle transitions", () => {
   });
 
   describe("Subsequent Job Stage Transitions", () => {
-    /**
-     * Helper to invoke the PATCH status route handler with mock request payload.
-     *
-     * @param jobId - Identifier of the job to update.
-     * @param status - Target status string.
-     * @returns Promise resolving to the HTTP Response.
-     */
-    function callStatusPatch(jobId: string, status: string): Promise<Response> {
-      const request = new Request("http://localhost:3000/api/jobs/status", {
+    function callStatusPatch(status: string) {
+      return updateJobStatusRoute(new Request("http://localhost:3000/api/jobs/status", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jobId, status }),
-      });
-      return updateJobStatusRoute(request);
+        body: JSON.stringify({ jobId: VALID_JOB_ID, status, p_actor_id: "untrusted-actor" }),
+      }));
     }
 
-    it("allows legal happy-path transitions: OPEN -> IN_PROGRESS -> READY -> COMPLETED", async () => {
-      // Step 1: Transition OPEN -> IN_PROGRESS
-      mockJobAccess.mockResolvedValue({
-        job: { id: VALID_JOB_ID, status: "OPEN", booking_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" },
+    it.each(["IN_PROGRESS", "READY", "COMPLETED"])("uses one atomic RPC for %s with the verified actor", async (status) => {
+      mockRpc.mockResolvedValue({ data: null, error: null });
+      const response = await callStatusPatch(status);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true });
+      expect(mockRpc).toHaveBeenCalledExactlyOnceWith("transition_repair_job", {
+        p_actor_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        p_job_id: VALID_JOB_ID,
+        p_status: status,
       });
+      expect(mockAdminFrom).not.toHaveBeenCalled();
+      expect(mockJobAccess).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["JOB_CLOSED", 409], ["INVALID_STAGE_TRANSITION", 409],
+      ["TASKS_INCOMPLETE", 409], ["APPROVAL_REQUIRED", 409],
+      ["FORBIDDEN", 403], ["NOT_FOUND", 404],
+    ])("returns the %s RPC error without any independent writes", async (code, status) => {
+      mockRpc.mockResolvedValue({ data: null, error: { message: code } });
+      const response = await callStatusPatch("READY");
+      expect(response.status).toBe(status);
+      expect(await response.json()).toMatchObject({ error: { code } });
+      expect(mockAdminFrom).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["APPROVED", "IN_PROGRESS"], ["READY", "READY"], ["COMPLETED", "COMPLETED"],
+    ])("keeps the post-task job update conditional when the stage becomes %s", async (laterStatus, expectedStatus) => {
+      const taskId = "88888888-8888-4888-8888-888888888888";
+      let savedStatus = "APPROVED";
+      mockJobAccess.mockResolvedValue({ job: { id: VALID_JOB_ID, status: "APPROVED" } });
       mockAdminFrom.mockImplementation((table: string) => {
-        if (table === "jobs" || table === "bookings") {
-          return {
-            update: vi.fn().mockReturnValue({
-              eq: vi.fn().mockResolvedValue({ error: null }),
-            }),
+        if (table === "repair_tasks") return {
+          select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { job_id: VALID_JOB_ID }, error: null }) }) }),
+          update: () => ({ eq: () => ({ select: () => ({ single: async () => {
+            // Other requests finish the steps and handover after this task write commits.
+            savedStatus = laterStatus;
+            return { data: { id: taskId, status: "IN_PROGRESS" }, error: null };
+          } }) }) }),
+        };
+        const filters: Record<string, string> = {};
+        return { update: (update: { status: string }) => {
+          const query = {
+            eq: (field: string, value: string) => { filters[field] = value; return query; },
+            then: (resolve: (value: unknown) => void) => {
+              if (!filters.status || filters.status === savedStatus) savedStatus = update.status;
+              return Promise.resolve({ error: null }).then(resolve);
+            },
           };
-        }
-        return {};
+          return query;
+        } };
       });
+      const response = await updateTaskRoute(new Request("http://localhost:3000/api/jobs/tasks", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId, status: "IN_PROGRESS" }),
+      }));
+      expect(response.status).toBe(200);
+      expect(savedStatus).toBe(expectedStatus);
+    });
 
-      const res1 = await callStatusPatch(VALID_JOB_ID, "IN_PROGRESS");
-      const json1 = await res1.json();
-      expect(res1.status).toBe(200);
-      expect(json1.ok).toBe(true);
-
-      // Step 2: Transition IN_PROGRESS -> READY (with tasks complete)
-      mockJobAccess.mockResolvedValue({
-        job: {
-          id: VALID_JOB_ID,
-          status: "IN_PROGRESS",
-          customer_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
-          booking_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-        },
-      });
+    it("returns 409 without touching the job when the task guard rejects a stale start", async () => {
+      mockJobAccess.mockResolvedValue({ job: { id: VALID_JOB_ID, status: "APPROVED" } });
       mockAdminFrom.mockImplementation((table: string) => {
-        if (table === "repair_tasks") {
-          return {
-            select: vi.fn().mockReturnValue({
-              eq: vi.fn().mockResolvedValue({
-                data: [{ status: "COMPLETED" }, { status: "COMPLETED" }],
-                error: null,
-              }),
-            }),
-          };
-        }
-        if (table === "jobs" || table === "bookings") {
-          return {
-            update: vi.fn().mockReturnValue({
-              eq: vi.fn().mockResolvedValue({ error: null }),
-            }),
-          };
-        }
-        if (table === "notifications") {
-          return {
-            insert: vi.fn().mockResolvedValue({ error: null }),
-          };
-        }
-        return {};
+        if (table !== "repair_tasks") throw new Error("A rejected task write must not touch the job");
+        return {
+          select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { job_id: VALID_JOB_ID }, error: null }) }) }),
+          update: () => ({ eq: () => ({ select: () => ({ single: async () => ({ data: null, error: { message: "JOB_READY" } }) }) }) }),
+        };
       });
-
-      const res2 = await callStatusPatch(VALID_JOB_ID, "READY");
-      const json2 = await res2.json();
-      expect(res2.status).toBe(200);
-      expect(json2.ok).toBe(true);
-
-      // Step 3: Transition READY -> COMPLETED
-      mockJobAccess.mockResolvedValue({
-        job: {
-          id: VALID_JOB_ID,
-          status: "READY",
-          customer_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
-          booking_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-        },
-      });
-      const res3 = await callStatusPatch(VALID_JOB_ID, "COMPLETED");
-      const json3 = await res3.json();
-      expect(res3.status).toBe(200);
-      expect(json3.ok).toBe(true);
+      const response = await updateTaskRoute(new Request("http://localhost:3000/api/jobs/tasks", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId: "88888888-8888-4888-8888-888888888888", status: "IN_PROGRESS" }),
+      }));
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({ error: { code: "JOB_READY" } });
+      expect(mockAdminFrom.mock.calls.map(([table]) => table)).toEqual(["repair_tasks", "repair_tasks"]);
     });
 
-    it("rejects illegal transition 1: cannot transition a COMPLETED job back to IN_PROGRESS", async () => {
-      mockJobAccess.mockResolvedValue({
-        job: { id: VALID_JOB_ID, status: "COMPLETED", booking_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" },
-      });
-
-      const res = await callStatusPatch(VALID_JOB_ID, "IN_PROGRESS");
-      const json = await res.json();
-
-      expect(res.status).toBe(409);
-      expect(json.error.code).toBe("JOB_CLOSED");
-      expect(json.error.message).toBe("This repair is already closed");
-    });
-
-    it("rejects illegal transition 2: cannot transition a CANCELLED job to READY", async () => {
-      mockJobAccess.mockResolvedValue({
-        job: { id: VALID_JOB_ID, status: "CANCELLED", booking_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" },
-      });
-
-      const res = await callStatusPatch(VALID_JOB_ID, "READY");
-      const json = await res.json();
-
-      expect(res.status).toBe(409);
-      expect(json.error.code).toBe("JOB_CLOSED");
-      expect(json.error.message).toBe("This repair is already closed");
-    });
-
-    it("rejects illegal transition 3: cannot transition to READY or COMPLETED while repair steps are incomplete", async () => {
-      mockJobAccess.mockResolvedValue({
-        job: {
-          id: VALID_JOB_ID,
-          status: "IN_PROGRESS",
-          customer_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
-        },
-      });
-      mockAdminFrom.mockImplementation((table: string) => {
-        if (table === "repair_tasks") {
-          return {
-            select: vi.fn().mockReturnValue({
-              eq: vi.fn().mockResolvedValue({
-                // One task is completed, but another is still pending
-                data: [{ status: "COMPLETED" }, { status: "PENDING" }],
-                error: null,
-              }),
-            }),
-          };
-        }
-        return {};
-      });
-
-      const res = await callStatusPatch(VALID_JOB_ID, "READY");
-      const json = await res.json();
-
-      expect(res.status).toBe(409);
-      expect(json.error.code).toBe("TASKS_INCOMPLETE");
-      expect(json.error.message).toBe("Complete every repair step first");
-    });
-
-    it("rejects illegal stage skip: cannot jump OPEN -> COMPLETED via the status route", async () => {
-      mockJobAccess.mockResolvedValue({
-        job: { id: VALID_JOB_ID, status: "OPEN", booking_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" },
-      });
-      const res = await callStatusPatch(VALID_JOB_ID, "COMPLETED");
-      const json = await res.json();
-      expect(res.status).toBe(409);
-      expect(json.error.code).toBe("INVALID_STAGE_TRANSITION");
-    });
-
-    it("evaluates pure lifecycle transition matrix to detect illegal intermediate skips", () => {
-      // Happy path sequential transitions
-      expect(isValidJobTransition("OPEN", "IN_PROGRESS")).toBe(true);
-      expect(isValidJobTransition("IN_PROGRESS", "READY")).toBe(true);
-      expect(isValidJobTransition("READY", "COMPLETED")).toBe(true);
-
-      // Illegal jumps: jumping from OPEN directly to COMPLETED skipping diagnostic and progress stages
-      expect(isValidJobTransition("OPEN", "COMPLETED")).toBe(false);
-      // Illegal jumps: jumping from DIAGNOSING directly to READY
-      expect(isValidJobTransition("DIAGNOSING", "READY")).toBe(false);
-      // Illegal backward transition: COMPLETED back to IN_PROGRESS
-      expect(isValidJobTransition("COMPLETED", "IN_PROGRESS")).toBe(false);
-      // Illegal backward transition: CANCELLED back to OPEN
-      expect(isValidJobTransition("CANCELLED", "OPEN")).toBe(false);
+    it("reports an unclassified database failure as 500", async () => {
+      const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        mockRpc.mockResolvedValue({ data: null, error: { message: "Injected database write failure" } });
+        const response = await callStatusPatch("READY");
+        expect(response.status).toBe(500);
+        expect(await response.json()).toMatchObject({ error: { code: "INTERNAL_ERROR" } });
+      } finally { logged.mockRestore(); }
     });
   });
 });

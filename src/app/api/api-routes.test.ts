@@ -34,7 +34,6 @@ const TEST_VEHICLE_ID = "33333333-3333-4333-8333-333333333333";
 const TEST_BOOKING_ID = "44444444-4444-4444-8444-444444444444";
 const TEST_JOB_ID = "55555555-5555-4555-8555-555555555555";
 const TEST_INVOICE_ID = "66666666-6666-4666-8666-666666666666";
-const TEST_FRANCHISE_ID = "77777777-7777-4777-8777-777777777777";
 
 describe("PART B: Real API route integration tests", () => {
   beforeEach(() => {
@@ -162,6 +161,24 @@ describe("PART B: Real API route integration tests", () => {
   });
 
   describe("Route 2: PATCH /api/jobs/status (Update job status)", () => {
+    it.each(["signed out", "disabled"])("rejects a %s account before the status RPC", async (account) => {
+      configureAuthenticatedUser();
+      if (account === "signed out") {
+        mockGetUser.mockResolvedValue({ data: { user: null }, error: null });
+      }
+      mockAdminFrom.mockImplementation(() => ({
+        select: () => ({ eq: () => ({ single: async () => ({
+          data: { id: TEST_USER_ID, is_active: false }, error: null,
+        }) }) }),
+      }));
+      const response = await updateJobStatusRoute(new Request("http://localhost:3000/api/jobs/status", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: TEST_JOB_ID, status: "READY" }),
+      }));
+      expect(response.status).toBe(401);
+      expect(mockAdminRpc).not.toHaveBeenCalled();
+    });
+
     it("handles valid status update and returns 200 with ok flag", async () => {
       configureAuthenticatedUser();
 
@@ -186,68 +203,9 @@ describe("PART B: Real API route integration tests", () => {
           };
         }
 
-        if (table === "jobs") {
-          return {
-            select: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                maybeSingle: vi.fn().mockResolvedValue({
-                  data: {
-                    id: TEST_JOB_ID,
-                    booking_id: TEST_BOOKING_ID,
-                    franchise_id: TEST_FRANCHISE_ID,
-                    shop_id: TEST_SHOP_ID,
-                    customer_id: "99999999-9999-4999-8999-999999999999",
-                    status: "OPEN",
-                    assigned_mechanic_id: null,
-                    current_quote_id: null,
-                  },
-                  error: null,
-                }),
-              }),
-            }),
-            update: vi.fn().mockReturnValue({
-              eq: vi.fn().mockResolvedValue({ error: null }),
-            }),
-          };
-        }
-
-        if (table === "memberships") {
-          return {
-            select: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                eq: vi.fn().mockReturnValue({
-                  eq: vi.fn().mockReturnValue({
-                    in: vi.fn().mockResolvedValue({
-                      data: [
-                        {
-                          id: "mem-1",
-                          user_id: TEST_USER_ID,
-                          franchise_id: TEST_FRANCHISE_ID,
-                          shop_id: TEST_SHOP_ID,
-                          role: "FRANCHISE_ADMIN",
-                          is_active: true,
-                          franchise: { status: "ACTIVE" },
-                        },
-                      ],
-                      error: null,
-                    }),
-                  }),
-                }),
-              }),
-            }),
-          };
-        }
-
-        if (table === "bookings") {
-          return {
-            update: vi.fn().mockReturnValue({
-              eq: vi.fn().mockResolvedValue({ error: null }),
-            }),
-          };
-        }
-
         return {};
       });
+      mockAdminRpc.mockResolvedValue({ data: null, error: null });
 
       const request = new Request("http://localhost:3000/api/jobs/status", {
         method: "PATCH",
@@ -263,6 +221,11 @@ describe("PART B: Real API route integration tests", () => {
 
       const body = await response.json();
       expect(body).toEqual({ ok: true });
+      expect(mockAdminRpc).toHaveBeenCalledExactlyOnceWith("transition_repair_job", {
+        p_actor_id: TEST_USER_ID,
+        p_job_id: TEST_JOB_ID,
+        p_status: "IN_PROGRESS",
+      });
     });
 
     it("rejects invalid status payload with HTTP 400 and validation error", async () => {
