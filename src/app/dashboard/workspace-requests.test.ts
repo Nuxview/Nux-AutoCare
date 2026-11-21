@@ -189,6 +189,24 @@ describe("pages reuse the dashboard workspace", () => {
     },
   );
 
+  it("does not request payment options for unopened invoices", async () => {
+    const invoices = Array.from({ length: 25 }, (_, index) => ({
+      id: `invoice-${index}`,
+      number: `INV-${index}`,
+      status: "ISSUED",
+      totalAmount: "1000",
+      amountPaid: "0",
+      currency: "KES",
+      createdAt: "2026-11-21",
+      customerId: customer.userId,
+      shop: { name: "Test Garage" },
+    }));
+    vi.mocked(useState).mockReturnValueOnce([invoices, vi.fn()]);
+    mount(InvoicesPage, customer);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(["/api/invoices"]);
+  });
+
   it("reuses page data on return and reloads it after a vehicle mutation", async () => {
     mount(BookingsPage, customer);
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
