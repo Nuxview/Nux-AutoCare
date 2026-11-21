@@ -2,7 +2,7 @@
 
 import { request, resetApiSession } from "@/lib/client-cache";
 
-import { useState } from "react";
+import { useId, useState, type ComponentProps, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -178,29 +178,27 @@ export function AuthForm({ initialMode, invalidLink = false }: { initialMode: "l
           </div>
           <h1 id="reset-heading" style={{ margin: 0 }}>Set new password</h1>
         </div>
-        <p style={{ marginTop: 10 }}>Choose a new password of at least 10 characters.</p>
         <form method="post" onSubmit={handleUpdatePassword} className="form-grid" noValidate>
           {newPasswordError && (
             <div className="field-wide form-error" role="alert">
               {newPasswordError}
             </div>
           )}
-          <Field label="New password" error={newPasswordError} wide>
-            <input
-              id="new-password"
-              required
-              type="password"
-              autoComplete="new-password"
-              className="input"
-              placeholder="10+ characters"
-              value={newPassword}
-              onChange={(e) => {
-                setNewPassword(e.target.value);
-                if (newPasswordError) setNewPasswordError("");
-              }}
-              aria-required="true"
-              aria-invalid={!!newPasswordError}
-            />
+          <Field label="New password" hint="Choose a new password of at least 10 characters." error={newPasswordError} wide>
+            {(field) => (
+              <input
+                {...field}
+                required
+                type="password"
+                autoComplete="new-password"
+                className="input"
+                value={newPassword}
+                onChange={(e) => {
+                  setNewPassword(e.target.value);
+                  if (newPasswordError) setNewPasswordError("");
+                }}
+              />
+            )}
           </Field>
           <div className="field-wide" style={{ marginTop: 6 }}>
             <button
@@ -288,25 +286,25 @@ export function AuthForm({ initialMode, invalidLink = false }: { initialMode: "l
             )}
 
             <Field label="Email address" error={forgotError} wide>
-              <div className="input-with-icon">
-                <Mail size={16} className="field-icon" aria-hidden="true" />
-                <input
-                  id="forgot-email"
-                  required
-                  type="email"
-                  inputMode="email"
-                  autoComplete="email"
-                  className="input pl-icon"
-                  placeholder="name@example.com"
-                  value={forgotEmail}
-                  onChange={(e) => {
-                    setForgotEmail(e.target.value);
-                    if (forgotError) setForgotError("");
-                  }}
-                  aria-required="true"
-                  aria-invalid={!!forgotError}
-                />
-              </div>
+              {(field) => (
+                <div className="input-with-icon">
+                  <Mail size={16} className="field-icon" aria-hidden="true" />
+                  <input
+                    {...field}
+                    required
+                    type="email"
+                    inputMode="email"
+                    autoComplete="email"
+                    className="input pl-icon"
+                    placeholder="name@example.com"
+                    value={forgotEmail}
+                    onChange={(e) => {
+                      setForgotEmail(e.target.value);
+                      if (forgotError) setForgotError("");
+                    }}
+                  />
+                </div>
+              )}
             </Field>
 
             <div className="field-wide" style={{ marginTop: 6 }}>
@@ -366,34 +364,49 @@ export function AuthForm({ initialMode, invalidLink = false }: { initialMode: "l
         {mode === "register" && (
           <>
             <Field label="First name" error={errors.firstName?.message}>
-              <input required className="input" autoComplete="given-name" {...register("firstName")} />
+              {(field) => <input {...field} required className="input" autoComplete="given-name" {...register("firstName")} />}
             </Field>
             <Field label="Last name" error={errors.lastName?.message}>
-              <input required className="input" autoComplete="family-name" {...register("lastName")} />
+              {(field) => <input {...field} required className="input" autoComplete="family-name" {...register("lastName")} />}
             </Field>
             <Field label="Mobile number" error={errors.phone?.message}>
-              <input required className="input" placeholder="0712 345 678" autoComplete="tel" {...register("phone")} />
+              {(field) => <input {...field} required className="input" placeholder="0712 345 678" autoComplete="tel" {...register("phone")} />}
             </Field>
           </>
         )}
         <Field label="Email address" error={errors.email?.message} wide={mode === "login"}>
-          <input className="input" type="email" autoComplete="email" {...register("email")} />
+          {(field) => <input {...field} className="input" type="email" autoComplete="email" {...register("email")} />}
         </Field>
-        <Field label="Password" error={errors.password?.message} wide>
-          <input
-            className="input"
-            type="password"
-            autoComplete={mode === "login" ? "current-password" : "new-password"}
-            placeholder={mode === "register" ? "10+ characters, upper/lowercase and a number" : undefined}
-            {...register("password")}
-          />
+        <Field
+          label="Password"
+          hint={mode === "register" ? "10+ characters, upper/lowercase and a number" : undefined}
+          error={errors.password?.message}
+          wide
+        >
+          {(field) => (
+            <input
+              {...field}
+              className="input"
+              type="password"
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
+              {...register("password")}
+            />
+          )}
         </Field>
         {mode === "register" && accountType === "garage" && (
           <>
-            <Field label="Business name" error={errors.businessName?.message}><input required className="input" {...register("businessName")} /></Field>
-            <Field label="First shop name" error={errors.shopName?.message}><input required className="input" {...register("shopName")} /></Field>
-            <Field label="County" error={errors.county?.message}><input required className="input" placeholder="Nairobi" {...register("county")} /></Field>
-            <Field label="Street address" error={errors.address?.message}><input required className="input" {...register("address")} /></Field>
+            <Field label="Business name" error={errors.businessName?.message}>
+              {(field) => <input {...field} required className="input" {...register("businessName")} />}
+            </Field>
+            <Field label="First shop name" error={errors.shopName?.message}>
+              {(field) => <input {...field} required className="input" {...register("shopName")} />}
+            </Field>
+            <Field label="County" error={errors.county?.message}>
+              {(field) => <input {...field} required className="input" placeholder="Nairobi" {...register("county")} />}
+            </Field>
+            <Field label="Street address" error={errors.address?.message}>
+              {(field) => <input {...field} required className="input" {...register("address")} />}
+            </Field>
           </>
         )}
         {mode === "register" && (
@@ -430,36 +443,34 @@ export function AuthForm({ initialMode, invalidLink = false }: { initialMode: "l
   );
 }
 
-/**
- * Reusable form field wrapper supporting labels, trailing actions, error display, and inputs.
- *
- * @param props.label Field label text
- * @param props.error Optional error message string
- * @param props.wide Whether the field spans full grid width
- * @param props.trailingAction Optional JSX placed on the right side of the label (e.g. forgot password button)
- * @param props.children Nested input element
- */
+type FieldControl = Pick<ComponentProps<"input">, "id" | "aria-describedby" | "aria-invalid">;
+
 function Field({
   label,
+  hint,
   error,
   wide,
-  trailingAction,
   children,
 }: {
   label: string;
+  hint?: string;
   error?: string;
   wide?: boolean;
-  trailingAction?: React.ReactNode;
-  children: React.ReactNode;
+  children: (field: FieldControl) => ReactNode;
 }) {
+  const id = useId();
+  const hintId = hint ? `${id}-hint` : undefined;
+  const errorId = error ? `${id}-error` : undefined;
+  const description = [hintId, errorId].filter(Boolean).join(" ");
+
   return (
     <div className={`field${wide ? " field-wide" : ""}`}>
       <div className="field-header">
-        <label className="field-label">{label}</label>
-        {trailingAction}
+        <label htmlFor={id} className="field-label">{label}</label>
       </div>
-      {children}
-      {error ? <span className="error-text">{error}</span> : null}
+      {children({ id, "aria-describedby": description || undefined, "aria-invalid": error ? true : undefined })}
+      {hint && <small id={hintId}>{hint}</small>}
+      {error && <span id={errorId} className="error-text">{error}</span>}
     </div>
   );
 }
