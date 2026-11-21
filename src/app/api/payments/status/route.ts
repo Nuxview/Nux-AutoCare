@@ -2,8 +2,8 @@ import { z } from "zod";
 import { ApiError, jsonError } from "@/lib/api";
 import { requireAuthenticatedUser } from "@/server/auth/context";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getPaymentProvider } from "@/server/payments/provider";
 import { reconcileStripe, stripeClient } from "@/server/payments/stripe";
-import { reconcileMpesa } from "@/server/payments/mpesa";
 
 export async function GET(request: Request) {
   try {
@@ -25,8 +25,9 @@ export async function GET(request: Request) {
     const payment = found.data;
     let status = payment.status;
     if (["PENDING", "PROCESSING"].includes(status)) {
-      if (payment.provider === "MPESA")
-        status = await reconcileMpesa(reference);
+      const provider = getPaymentProvider(payment.provider);
+      if (provider)
+        status = (await provider.verifyPayment(reference)).status;
       else if (payment.provider === "STRIPE" && payment.provider_reference)
         status = await reconcileStripe(
           await stripeClient().checkout.sessions.retrieve(

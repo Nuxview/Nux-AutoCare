@@ -2,6 +2,12 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { ApiError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type {
+  InitiatePaymentInput,
+  InitiatePaymentResult,
+  PaymentProvider,
+  VerifyPaymentResult,
+} from "./provider";
 import { assertSandboxGarage, paymentAppUrl } from "./settings";
 
 export function requireMpesaConfig() {
@@ -176,4 +182,37 @@ export async function reconcileMpesa(reference: string) {
     return "FAILED";
   }
   return "PROCESSING";
+}
+
+/**
+ * Safaricom M-Pesa implementation of the shared PaymentProvider contract.
+ */
+export class MpesaPaymentProvider implements PaymentProvider {
+  readonly name = "MPESA" as const;
+
+  async initiatePayment(input: InitiatePaymentInput): Promise<InitiatePaymentResult> {
+    if (!input.phone) {
+      throw new ApiError(400, "Phone number is required for M-Pesa", "PHONE_REQUIRED");
+    }
+    const checkoutRequestId = await requestStkPush({
+      phone: input.phone,
+      amount: input.amount,
+      accountReference: input.reference,
+    });
+    return {
+      provider: this.name,
+      reference: input.reference,
+      checkoutRequestId,
+    };
+  }
+
+  async verifyPayment(reference: string): Promise<VerifyPaymentResult> {
+    const status = await reconcileMpesa(reference);
+    return {
+      provider: this.name,
+      reference,
+      status,
+      paid: status === "SUCCEEDED",
+    };
+  }
 }

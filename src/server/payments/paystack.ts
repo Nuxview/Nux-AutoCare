@@ -1,5 +1,11 @@
 import "server-only";
 import { ApiError } from "@/lib/api";
+import type {
+  InitiatePaymentInput,
+  InitiatePaymentResult,
+  PaymentProvider,
+  VerifyPaymentResult,
+} from "./provider";
 export { toPaystackMinorUnits, verifyPaystackSignature } from "@/lib/paystack";
 
 const baseUrl = "https://api.paystack.co";
@@ -89,4 +95,38 @@ export function createSubaccount(input: { business_name: string; bank_code: stri
 
 export function fetchSubaccount(code: string) {
   return paystackRequest<{ subaccount_code: string; currency: string; active: boolean }>(`/subaccount/${encodeURIComponent(code)}`);
+}
+
+/**
+ * Paystack implementation of the shared PaymentProvider contract.
+ */
+export class PaystackPaymentProvider implements PaymentProvider {
+  readonly name = "PAYSTACK" as const;
+
+  async initiatePayment(input: InitiatePaymentInput): Promise<InitiatePaymentResult> {
+    const initialized = await initializeTransaction({
+      reference: input.reference,
+      amount: Math.round(input.amount * 100),
+      currency: input.currency,
+      email: input.email,
+      callback_url: input.callbackUrl,
+      metadata: input.metadata,
+    });
+    return {
+      provider: this.name,
+      reference: initialized.reference,
+      authorizationUrl: initialized.authorization_url,
+    };
+  }
+
+  async verifyPayment(reference: string): Promise<VerifyPaymentResult> {
+    const tx = await verifyTransaction(reference);
+    const status = tx.status === "success" ? "SUCCEEDED" : tx.status.toUpperCase();
+    return {
+      provider: this.name,
+      reference: tx.reference,
+      status,
+      paid: tx.status === "success",
+    };
+  }
 }

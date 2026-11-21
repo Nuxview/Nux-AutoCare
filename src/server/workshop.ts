@@ -2,9 +2,23 @@ import { ApiError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAuthenticatedUser } from "@/server/auth/context";
 
-export async function workshopRpc(name: string, args: Record<string, unknown>) {
+export type WorkshopDbClient = ReturnType<typeof createAdminClient>;
+
+/**
+ * Executes a workshop RPC with the authenticated user as actor.
+ *
+ * @param name - Postgres RPC function name.
+ * @param args - RPC argument map.
+ * @param admin - Optional Supabase admin client override for dependency injection.
+ * @returns RPC response payload.
+ */
+export async function workshopRpc(
+  name: string,
+  args: Record<string, unknown>,
+  admin: WorkshopDbClient = createAdminClient(),
+) {
   const user = await requireAuthenticatedUser();
-  const { data, error } = await createAdminClient().rpc(name, {
+  const { data, error } = await admin.rpc(name, {
     ...args,
     p_actor_id: user.id,
   });
