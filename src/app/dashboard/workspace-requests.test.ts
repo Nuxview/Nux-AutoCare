@@ -1,4 +1,4 @@
-import { createElement, type ComponentType, type EffectCallback } from "react";
+import { createElement, useState, type ComponentType, type EffectCallback } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -8,12 +8,16 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/dashboard",
 }));
 // Run mount effects explicitly to count page requests without a browser or live backend.
-vi.mock("react", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("react")>()),
-  useEffect: (effect: EffectCallback) => {
-    effects.push(effect);
-  },
-}));
+vi.mock("react", async (importOriginal) => {
+  const react = await importOriginal<typeof import("react")>();
+  return {
+    ...react,
+    useState: vi.fn(react.useState),
+    useEffect: (effect: EffectCallback) => {
+      effects.push(effect);
+    },
+  };
+});
 vi.mock("@/components/approved-invoices", () => ({
   ApprovedInvoices: () => null,
 }));
@@ -86,6 +90,15 @@ function mount(Page: ComponentType, workspace: Workspace) {
 }
 
 describe("pages reuse the dashboard workspace", () => {
+  it("keeps workspace links and the sign-out button named with compact labels", () => {
+    vi.mocked(useState).mockReturnValueOnce([false, vi.fn()]);
+    const markup = renderToStaticMarkup(createElement(DashboardShell, null, null));
+    expect(markup).toContain('aria-label="AutoCare"');
+    expect(markup).toContain('aria-label="My overview" aria-current="page"');
+    expect(markup).toContain('aria-label="Garage visits"');
+    expect(markup).toContain('<button type="button" aria-label="Sign out"');
+  });
+
   it("boots the shell and dashboard from one combined request", async () => {
     fetchMock.mockResolvedValue(
       Response.json({
