@@ -17,6 +17,9 @@ async function scalar(sql: string, params: unknown[] = []) {
   const r = await db.query<Record<string, unknown>>(sql, params);
   return Object.values(r.rows[0])[0];
 }
+function shopHasCurrentSubscription() {
+  return scalar("select shop_has_current_subscription(s) from shops s where id=$1", [id(20)]);
+}
 async function fails(sql: string, params: unknown[], message: string) {
   await db.exec("savepoint expected_failure");
   let caught: unknown;
@@ -222,6 +225,7 @@ describe("workshop database workflows", () => {
     );
     await db.query("update bookings set status='REQUESTED' where id=$1", [id(41)]);
     await db.exec("set local role service_role");
+    expect(await shopHasCurrentSubscription()).toBe(false);
     await fails(
       "select create_booking($1,$2,$3,null,date_trunc('week',now())+interval '14 days 7 hours',null,'BLOCKED')",
       [id(2), id(20), id(30)], status === "PAST_DUE" ? "SHOP_NOT_FOUND" : "TENANT_READ_ONLY",
@@ -236,13 +240,22 @@ describe("workshop database workflows", () => {
   });
   it("restores writes after a paid renewal and fails closed for a missing subscription", async () => {
     await db.exec("set local role service_role");
+    expect(await shopHasCurrentSubscription()).toBe(true);
     await db.query("update franchises set status='PAST_DUE' where id=$1", [id(10)]);
     await fails("select assert_tenant_writable($1)", [id(10)], "TENANT_READ_ONLY");
     await db.query("update subscriptions set trial_ends_at=now()-interval '1 day', current_period_ends_at=now()+interval '1 month' where franchise_id=$1", [id(10)]);
     await db.query("update franchises set status='ACTIVE' where id=$1", [id(10)]);
+    expect(await shopHasCurrentSubscription()).toBe(true);
     expect(await quote()).toEqual(expect.any(String));
     await db.query("delete from subscriptions where franchise_id=$1", [id(10)]);
+    expect(await shopHasCurrentSubscription()).toBe(false);
     await fails("select assert_tenant_writable($1)", [id(10)], "TENANT_READ_ONLY");
+  });
+  it("restricts the booking subscription filter to the service role", async () => {
+    const hasFilterAccess = "select has_function_privilege($1, 'public.shop_has_current_subscription(public.shops)', 'EXECUTE')";
+    expect(await scalar(hasFilterAccess, ["anon"])).toBe(false);
+    expect(await scalar(hasFilterAccess, ["authenticated"])).toBe(false);
+    expect(await scalar(hasFilterAccess, ["service_role"])).toBe(true);
   });
   it("preserves a customer's quote and payment actions while garage job writes are paused", async () => {
     const pendingQuote = await quote();
