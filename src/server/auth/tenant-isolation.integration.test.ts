@@ -2,15 +2,10 @@ import { createClient } from "@supabase/supabase-js";
 import { describe, expect, it } from "vitest";
 import { supabaseTestConfig } from "@/test/supabase-config";
 
-const hasSupabaseEnv = Boolean(
-  process.env.TEST_SUPABASE_URL?.trim() &&
-    process.env.TEST_SUPABASE_PUBLISHABLE_KEY?.trim() &&
-    process.env.TEST_SUPABASE_SECRET_KEY?.trim(),
-);
 const GARAGE_B_ID = "22222222-2222-4222-8222-222222222222";
 const USER_A_ID = "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa";
 
-describe.skipIf(!hasSupabaseEnv)("Supabase anonymous access and invalid sessions", () => {
+describe("Supabase anonymous access and invalid sessions", () => {
   it("denies anonymous operational reads and hides profiles", async () => {
     const { url: SUPABASE_URL, publishableKey: SUPABASE_ANON_KEY } =
       supabaseTestConfig();

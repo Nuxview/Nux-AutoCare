@@ -2,13 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { supabaseTestConfig } from "@/test/supabase-config";
 
-const hasSupabaseEnv = Boolean(
-  process.env.TEST_SUPABASE_URL?.trim() &&
-    process.env.TEST_SUPABASE_PUBLISHABLE_KEY?.trim() &&
-    process.env.TEST_SUPABASE_SECRET_KEY?.trim(),
-);
-
-describe.skipIf(!hasSupabaseEnv)("PART A: Real Row-Level Security (RLS) enforcement", () => {
+describe("PART A: Real Row-Level Security (RLS) enforcement", () => {
   const timestamp = Date.now();
   const testUserEmail = `rls_member_${timestamp}@example.com`;
   const testUserPassword = "SecurePassword123!";
