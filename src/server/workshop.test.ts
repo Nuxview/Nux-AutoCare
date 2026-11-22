@@ -953,6 +953,15 @@ describe("workshop database workflows", () => {
       }
       expect(await scalar("select has_function_privilege('service_role','public.transition_repair_job(uuid,uuid,text)','execute')")).toBe(true);
     });
+
+    it("allows valid OPEN -> IN_PROGRESS and rejects skipping READY (IN_PROGRESS -> COMPLETED)", async () => {
+      await approve(await quote());
+      await transition("IN_PROGRESS");
+      expect(await scalar("select status from jobs where id=$1", [id(50)])).toBe("IN_PROGRESS");
+      await expect(
+        db.query("select transition_repair_job($1,$2,'COMPLETED')", [id(1), id(50)]),
+      ).rejects.toThrow("INVALID_STAGE_TRANSITION");
+    });
   });
   it("preserves handover for legacy invoices without retroactive approval", async () => {
     await db.query(
