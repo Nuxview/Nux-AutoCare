@@ -14,6 +14,10 @@ const fixture = vi.hoisted(() => ({
   tenant: vi.fn(),
 }));
 vi.mock("server-only", () => ({}));
+vi.mock("@/server/payments/stripe", () => ({
+  reconcileStripe: vi.fn(),
+  stripeClient: vi.fn(),
+}));
 vi.mock("@/server/auth/context", () => ({
   requireAuthenticatedUser: async () => ({ id: fixture.userId }),
   requireTenantMembership: fixture.tenant,
@@ -67,6 +71,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 
 import { reconcilePaystackTransaction } from "./paystack-reconcile";
 import { GET } from "@/app/api/payments/paystack/verify/route";
+import { GET as getPaymentStatus } from "@/app/api/payments/status/route";
 
 const reference = `PAY-${"a".repeat(32)}`;
 const request = () =>
@@ -88,6 +93,7 @@ beforeEach(() => {
     customer_id: "customer",
     provider: "PAYSTACK",
     status: "PROCESSING",
+    is_test: true,
     amount: "1000.00",
     currency: "KES",
   };
@@ -230,6 +236,25 @@ describe("Paystack invoice reconciliation (mocked provider)", () => {
     expect(fixture.fetch).not.toHaveBeenCalled();
     expect(fixture.update).not.toHaveBeenCalled();
   });
+  it.each([
+    ["ongoing", 202, "PROCESSING"],
+    ["success", 200, "SUCCEEDED"],
+    ["failed", 200, "FAILED"],
+  ] as const)(
+    "reports the reconciled invoice payment status for provider status %s",
+    async (providerStatus, httpStatus, paymentStatus) => {
+      fixture.transaction.status = providerStatus;
+      const response = await getPaymentStatus(
+        new Request(`http://localhost/api/payments/status?reference=${reference}`),
+      );
+      expect(response.status).toBe(httpStatus);
+      expect(await response.json()).toEqual({ status: paymentStatus, test: true });
+      expect(fixture.payment!.status).toBe(paymentStatus);
+      expect(fixture.rpc).toHaveBeenCalledTimes(
+        providerStatus === "success" ? 1 : 0,
+      );
+    },
+  );
   it.each(["failed", "success"])(
     "preserves subscription verification for %s without an invoice failure write",
     async (status) => {

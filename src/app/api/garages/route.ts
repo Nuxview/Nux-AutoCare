@@ -10,7 +10,7 @@ export async function GET(request: Request) {
     )
     .eq("is_active", true)
     .eq("accepts_bookings", true)
-    .in("franchise.status", ["ACTIVE", "TRIAL"])
+    .eq("shop_has_current_subscription", true)
     .order("name");
   if (county) query = query.ilike("county", county);
   const { data, error } = await query;

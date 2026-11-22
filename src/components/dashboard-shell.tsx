@@ -150,7 +150,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       className={`app-layout ${garage ? "garage-layout" : "customer-layout"}`}
     >
       <aside className="sidebar">
-        <Link href="/dashboard" className="sidebar-brand">
+        <Link href="/dashboard" aria-label="AutoCare" className="sidebar-brand">
           <Brand light />
         </Link>
         <div className="sidebar-kicker">
@@ -161,7 +161,9 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             <Link
               key={href}
               href={href}
-              className={`side-link${path === href ? " active" : ""}`}
+              aria-label={label}
+              aria-current={path === href ? "page" : undefined}
+              className="side-link"
             >
               <Icon size={18} />
               <span>{label}</span>
@@ -169,7 +171,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
         <div className="side-profile">
-          <button onClick={logout} className="side-link sign-out">
+          <button type="button" aria-label="Sign out" onClick={logout} className="side-link sign-out">
             <LogOut size={17} />
             <span>Sign out</span>
           </button>

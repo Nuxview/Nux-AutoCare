@@ -1,7 +1,7 @@
 "use client";
 
 import { request } from "@/lib/client-cache";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 type Options = {
   test: boolean;
@@ -25,21 +25,23 @@ export function InvoicePayment({
   const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  useEffect(() => {
-    let active = true;
-    void request(`/api/payments/options?invoiceId=${invoiceId}`)
-      .then(async (r) => {
-        if (!r.ok) throw new Error("Payment options could not be loaded.");
-        const data = await r.json();
-        if (active) setOptions(data);
-      })
-      .catch((e) => {
-        if (active) setMessage(e.message);
-      });
-    return () => {
-      active = false;
-    };
-  }, [invoiceId]);
+
+  async function loadOptions() {
+    if (options || busy) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const response = await request(
+        `/api/payments/options?invoiceId=${invoiceId}`,
+      );
+      if (!response.ok) throw new Error();
+      setOptions(await response.json());
+    } catch {
+      setMessage("Payment options could not be loaded.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function pay(provider: "stripe" | "mpesa" | "paystack") {
     setBusy(true);
@@ -110,82 +112,113 @@ export function InvoicePayment({
   }
 
   return (
-    <div style={{ display: "grid", gap: 8, minWidth: 190 }}>
-      {options?.test && <small>Sandbox — test payments only</small>}
-      {options?.pending ? (
-        <>
-          {options.pending.checkout_url && (
-            <a className="btn btn-primary" href={options.pending.checkout_url}>
-              Resume checkout
-            </a>
-          )}
-          {options.pending.provider === "STRIPE" &&
-            !options.pending.checkout_url && (
-              <button
-                className="btn"
-                disabled={busy}
-                onClick={() => void pay("stripe")}
+    <details
+      onToggle={(event) => {
+        if (event.currentTarget.open) void loadOptions();
+      }}
+    >
+      <summary style={{ cursor: "pointer" }}>Payment options</summary>
+      <div style={{ display: "grid", gap: 8, minWidth: 190, marginTop: 8 }}>
+        {options?.test && <small>Sandbox — test payments only</small>}
+        {options?.pending ? (
+          <>
+            {options.pending.checkout_url && (
+              <a
+                className="btn btn-primary"
+                href={options.pending.checkout_url}
               >
                 Resume checkout
-              </button>
+              </a>
             )}
-          <button className="btn" disabled={busy} onClick={() => void check()}>
-            Check payment status
-          </button>
-        </>
-      ) : (
-        <>
-          {options?.stripe && (
-            <button
-              className="btn btn-primary"
-              disabled={busy}
-              onClick={() => void pay("stripe")}
-            >
-              Pay with Stripe
-            </button>
-          )}
-          {options?.mpesa && (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                void pay("mpesa");
-              }}
-              style={{ display: "grid", gap: 8 }}
-            >
-              <label htmlFor={`phone-${invoiceId}`}>M-Pesa sandbox phone</label>
-              <input
-                id={`phone-${invoiceId}`}
-                type="tel"
-                autoComplete="tel"
-                placeholder="2547…"
-                required
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-              />
-              <button className="btn btn-primary" disabled={busy}>
-                Pay with M-Pesa
-              </button>
-            </form>
-          )}
-          {options?.paystack && (
+            {options.pending.provider === "STRIPE" &&
+              !options.pending.checkout_url && (
+                <button
+                  className="btn"
+                  disabled={busy}
+                  onClick={() => void pay("stripe")}
+                >
+                  Resume checkout
+                </button>
+              )}
             <button
               className="btn"
               disabled={busy}
-              onClick={() => void pay("paystack")}
+              onClick={() => void check()}
             >
-              Pay with Paystack
+              Check payment status
             </button>
-          )}
-          {options &&
-            !options.stripe &&
-            !options.mpesa &&
-            !options.paystack && (
-              <small>Online payments are not configured for this garage.</small>
+          </>
+        ) : (
+          <>
+            {options?.stripe && (
+              <button
+                className="btn btn-primary"
+                disabled={busy}
+                onClick={() => void pay("stripe")}
+              >
+                Pay with Stripe
+              </button>
             )}
-        </>
-      )}
-      {busy && <small role="status">Please wait…</small>}
-      {message && <small role="status">{message}</small>}
-    </div>
+            {options?.mpesa && (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void pay("mpesa");
+                }}
+                style={{ display: "grid", gap: 8 }}
+              >
+                <label htmlFor={`phone-${invoiceId}`}>
+                  M-Pesa sandbox phone
+                </label>
+                <input
+                  id={`phone-${invoiceId}`}
+                  type="tel"
+                  autoComplete="tel"
+                  placeholder="2547…"
+                  required
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                />
+                <button className="btn btn-primary" disabled={busy}>
+                  Pay with M-Pesa
+                </button>
+              </form>
+            )}
+            {options?.paystack && (
+              <button
+                className="btn"
+                disabled={busy}
+                onClick={() => void pay("paystack")}
+              >
+                Pay with Paystack
+              </button>
+            )}
+            {options &&
+              !options.stripe &&
+              !options.mpesa &&
+              !options.paystack && (
+                <small>
+                  Online payments are not configured for this garage.
+                </small>
+              )}
+          </>
+        )}
+        {busy && (
+          <small role="status">
+            {options ? "Please wait…" : "Loading payment options…"}
+          </small>
+        )}
+        {message && <small role="status">{message}</small>}
+        {!options && !busy && message && (
+          <button
+            type="button"
+            className="btn"
+            onClick={() => void loadOptions()}
+          >
+            Retry loading payment options
+          </button>
+        )}
+      </div>
+    </details>
   );
 }

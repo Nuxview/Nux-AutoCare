@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ApiError, jsonError } from "@/lib/api";
 import { requireAuthenticatedUser } from "@/server/auth/context";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { reconcilePaystackTransaction } from "@/server/payments/paystack-reconcile";
 import { getPaymentProvider } from "@/server/payments/provider";
 import { reconcileStripe, stripeClient } from "@/server/payments/stripe";
 
@@ -26,7 +27,9 @@ export async function GET(request: Request) {
     let status = payment.status;
     if (["PENDING", "PROCESSING"].includes(status)) {
       const provider = getPaymentProvider(payment.provider);
-      if (provider)
+      if (payment.provider === "PAYSTACK")
+        status = (await reconcilePaystackTransaction(reference)).status ?? status;
+      else if (provider)
         status = (await provider.verifyPayment(reference)).status;
       else if (payment.provider === "STRIPE" && payment.provider_reference)
         status = await reconcileStripe(

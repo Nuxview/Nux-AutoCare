@@ -1,4 +1,4 @@
-import { createElement, type ComponentType, type EffectCallback } from "react";
+import { createElement, useState, type ComponentType, type EffectCallback } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -8,12 +8,16 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/dashboard",
 }));
 // Run mount effects explicitly to count page requests without a browser or live backend.
-vi.mock("react", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("react")>()),
-  useEffect: (effect: EffectCallback) => {
-    effects.push(effect);
-  },
-}));
+vi.mock("react", async (importOriginal) => {
+  const react = await importOriginal<typeof import("react")>();
+  return {
+    ...react,
+    useState: vi.fn(react.useState),
+    useEffect: (effect: EffectCallback) => {
+      effects.push(effect);
+    },
+  };
+});
 vi.mock("@/components/approved-invoices", () => ({
   ApprovedInvoices: () => null,
 }));
@@ -86,6 +90,15 @@ function mount(Page: ComponentType, workspace: Workspace) {
 }
 
 describe("pages reuse the dashboard workspace", () => {
+  it("keeps workspace links and the sign-out button named with compact labels", () => {
+    vi.mocked(useState).mockReturnValueOnce([false, vi.fn()]);
+    const markup = renderToStaticMarkup(createElement(DashboardShell, null, null));
+    expect(markup).toContain('aria-label="AutoCare"');
+    expect(markup).toContain('aria-label="My overview" aria-current="page"');
+    expect(markup).toContain('aria-label="Garage visits"');
+    expect(markup).toContain('<button type="button" aria-label="Sign out"');
+  });
+
   it("boots the shell and dashboard from one combined request", async () => {
     fetchMock.mockResolvedValue(
       Response.json({
@@ -175,6 +188,24 @@ describe("pages reuse the dashboard workspace", () => {
       }
     },
   );
+
+  it("does not request payment options for unopened invoices", async () => {
+    const invoices = Array.from({ length: 25 }, (_, index) => ({
+      id: `invoice-${index}`,
+      number: `INV-${index}`,
+      status: "ISSUED",
+      totalAmount: "1000",
+      amountPaid: "0",
+      currency: "KES",
+      createdAt: "2026-11-21",
+      customerId: customer.userId,
+      shop: { name: "Test Garage" },
+    }));
+    vi.mocked(useState).mockReturnValueOnce([invoices, vi.fn()]);
+    mount(InvoicesPage, customer);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(["/api/invoices"]);
+  });
 
   it("reuses page data on return and reloads it after a vehicle mutation", async () => {
     mount(BookingsPage, customer);
