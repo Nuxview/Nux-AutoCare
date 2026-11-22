@@ -2,13 +2,18 @@ import { createClient } from "@supabase/supabase-js";
 import { describe, expect, it } from "vitest";
 import { supabaseTestConfig } from "@/test/supabase-config";
 
-const { url: SUPABASE_URL, publishableKey: SUPABASE_ANON_KEY } =
-  supabaseTestConfig();
+const hasSupabaseEnv = Boolean(
+  process.env.TEST_SUPABASE_URL?.trim() &&
+    process.env.TEST_SUPABASE_PUBLISHABLE_KEY?.trim() &&
+    process.env.TEST_SUPABASE_SECRET_KEY?.trim(),
+);
 const GARAGE_B_ID = "22222222-2222-4222-8222-222222222222";
 const USER_A_ID = "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa";
 
-describe("Supabase anonymous access and invalid sessions", () => {
+describe.skipIf(!hasSupabaseEnv)("Supabase anonymous access and invalid sessions", () => {
   it("denies anonymous operational reads and hides profiles", async () => {
+    const { url: SUPABASE_URL, publishableKey: SUPABASE_ANON_KEY } =
+      supabaseTestConfig();
     const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     const tables = ["jobs", "invoices", "bookings", "profiles"] as const;
 
@@ -28,6 +33,8 @@ describe("Supabase anonymous access and invalid sessions", () => {
 
   it("asserts unauthenticated anon request cannot write to Garage B records", async () => {
     // Verifies write attempts with anon key fail at the database boundary
+    const { url: SUPABASE_URL, publishableKey: SUPABASE_ANON_KEY } =
+      supabaseTestConfig();
     const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     const { error } = await client.from("jobs").insert({
       id: "99999999-9999-4999-8999-999999999999",
@@ -43,6 +50,8 @@ describe("Supabase anonymous access and invalid sessions", () => {
 
   it("rejects a malformed authentication token without returning garage data", async () => {
     // Simulates an authenticated user client with scoped token attempting to fetch Garage B records directly
+    const { url: SUPABASE_URL, publishableKey: SUPABASE_ANON_KEY } =
+      supabaseTestConfig();
     const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: {
         headers: {

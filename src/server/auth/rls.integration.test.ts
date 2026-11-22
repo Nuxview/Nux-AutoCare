@@ -2,9 +2,13 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { supabaseTestConfig } from "@/test/supabase-config";
 
-const { url: SUPABASE_URL, publishableKey: SUPABASE_ANON_KEY, secretKey: SERVICE_ROLE_KEY } = supabaseTestConfig();
+const hasSupabaseEnv = Boolean(
+  process.env.TEST_SUPABASE_URL?.trim() &&
+    process.env.TEST_SUPABASE_PUBLISHABLE_KEY?.trim() &&
+    process.env.TEST_SUPABASE_SECRET_KEY?.trim(),
+);
 
-describe("PART A: Real Row-Level Security (RLS) enforcement", () => {
+describe.skipIf(!hasSupabaseEnv)("PART A: Real Row-Level Security (RLS) enforcement", () => {
   const timestamp = Date.now();
   const testUserEmail = `rls_member_${timestamp}@example.com`;
   const testUserPassword = "SecurePassword123!";
@@ -33,7 +37,12 @@ describe("PART A: Real Row-Level Security (RLS) enforcement", () => {
    * @returns Promise resolving when setup completes.
    */
   beforeAll(async () => {
-    adminClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY!, {
+    const {
+      url: SUPABASE_URL,
+      publishableKey: SUPABASE_ANON_KEY,
+      secretKey: SERVICE_ROLE_KEY,
+    } = supabaseTestConfig();
+    adminClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
