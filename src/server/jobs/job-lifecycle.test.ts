@@ -209,57 +209,43 @@ describe("AREA 3: Job lifecycle transitions", () => {
       expect(mockAdminFrom).not.toHaveBeenCalled();
     });
 
-    it.each([
-      ["APPROVED", "IN_PROGRESS"], ["READY", "READY"], ["COMPLETED", "COMPLETED"],
-    ])("keeps the post-task job update conditional when the stage becomes %s", async (laterStatus, expectedStatus) => {
+    describe("task updates", () => {
       const taskId = "88888888-8888-4888-8888-888888888888";
-      let savedStatus = "APPROVED";
-      mockJobAccess.mockResolvedValue({ job: { id: VALID_JOB_ID, status: "APPROVED" } });
-      mockAdminFrom.mockImplementation((table: string) => {
-        if (table === "repair_tasks") return {
-          select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { job_id: VALID_JOB_ID }, error: null }) }) }),
-          update: () => ({ eq: () => ({ select: () => ({ single: async () => {
-            // Other requests finish the steps and handover after this task write commits.
-            savedStatus = laterStatus;
-            return { data: { id: taskId, status: "IN_PROGRESS" }, error: null };
-          } }) }) }),
-        };
-        const filters: Record<string, string> = {};
-        return { update: (update: { status: string }) => {
-          const query = {
-            eq: (field: string, value: string) => { filters[field] = value; return query; },
-            then: (resolve: (value: unknown) => void) => {
-              if (!filters.status || filters.status === savedStatus) savedStatus = update.status;
-              return Promise.resolve({ error: null }).then(resolve);
-            },
-          };
-          return query;
-        } };
-      });
-      const response = await updateTaskRoute(new Request("http://localhost:3000/api/jobs/tasks", {
+      const patchTask = () => updateTaskRoute(new Request("http://localhost:3000/api/jobs/tasks", {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taskId, status: "IN_PROGRESS" }),
       }));
-      expect(response.status).toBe(200);
-      expect(savedStatus).toBe(expectedStatus);
-    });
 
-    it("returns 409 without touching the job when the task guard rejects a stale start", async () => {
-      mockJobAccess.mockResolvedValue({ job: { id: VALID_JOB_ID, status: "APPROVED" } });
-      mockAdminFrom.mockImplementation((table: string) => {
-        if (table !== "repair_tasks") throw new Error("A rejected task write must not touch the job");
-        return {
+      beforeEach(() => {
+        mockJobAccess.mockResolvedValue({ job: { id: VALID_JOB_ID, status: "APPROVED" } });
+        mockAdminFrom.mockReturnValue({
           select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { job_id: VALID_JOB_ID }, error: null }) }) }),
-          update: () => ({ eq: () => ({ select: () => ({ single: async () => ({ data: null, error: { message: "JOB_READY" } }) }) }) }),
-        };
+        });
       });
-      const response = await updateTaskRoute(new Request("http://localhost:3000/api/jobs/tasks", {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ taskId: "88888888-8888-4888-8888-888888888888", status: "IN_PROGRESS" }),
-      }));
-      expect(response.status).toBe(409);
-      expect(await response.json()).toMatchObject({ error: { code: "JOB_READY" } });
-      expect(mockAdminFrom.mock.calls.map(([table]) => table)).toEqual(["repair_tasks", "repair_tasks"]);
+
+      it("uses one RPC after validating the job and returns the saved task", async () => {
+        mockRpc.mockResolvedValue({ data: { id: taskId, status: "IN_PROGRESS" }, error: null });
+        const response = await patchTask();
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({ task: { id: taskId, status: "IN_PROGRESS" } });
+        expect(mockJobAccess).toHaveBeenCalledWith(VALID_JOB_ID, true);
+        expect(mockRpc).toHaveBeenCalledExactlyOnceWith("update_repair_task", {
+          p_task_id: taskId, p_job_id: VALID_JOB_ID, p_status: "IN_PROGRESS", p_note: null,
+        });
+        expect(mockAdminFrom).toHaveBeenCalledExactlyOnceWith("repair_tasks");
+      });
+
+      it.each([
+        ["JOB_READY", 409, "JOB_READY"],
+        ["TENANT_READ_ONLY", 403, "TENANT_READ_ONLY"],
+        ["TASK_NOT_FOUND", 404, "NOT_FOUND"],
+      ])("maps the %s error from the same transaction", async (error, status, code) => {
+        mockRpc.mockResolvedValue({ data: null, error: { message: error } });
+        const response = await patchTask();
+        expect(response.status).toBe(status);
+        expect(await response.json()).toMatchObject({ error: { code } });
+        expect(mockAdminFrom).toHaveBeenCalledExactlyOnceWith("repair_tasks");
+      });
     });
 
     it("reports an unclassified database failure as 500", async () => {
