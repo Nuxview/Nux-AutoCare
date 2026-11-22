@@ -26,16 +26,20 @@ export function InvoicePayment({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
+  async function fetchOptions(): Promise<Options> {
+    const response = await request(
+      `/api/payments/options?invoiceId=${invoiceId}`,
+    );
+    if (!response.ok) throw new Error("Payment options could not be loaded.");
+    return response.json();
+  }
+
   async function loadOptions() {
     if (options || busy) return;
     setBusy(true);
     setMessage("");
     try {
-      const response = await request(
-        `/api/payments/options?invoiceId=${invoiceId}`,
-      );
-      if (!response.ok) throw new Error();
-      setOptions(await response.json());
+      setOptions(await fetchOptions());
     } catch {
       setMessage("Payment options could not be loaded.");
     } finally {
@@ -53,6 +57,19 @@ export function InvoicePayment({
         body: JSON.stringify({ invoiceId, phone }),
       });
       const data = await r.json();
+      if (r.status === 409 && data.error?.code === "CHECKOUT_OPEN") {
+        setOptions(null);
+        try {
+          const refreshed = await fetchOptions();
+          setOptions(refreshed);
+          setMessage(refreshed.pending
+            ? "Another payment is open. Check its status below."
+            : "Payment options changed. Review them before trying again.");
+        } catch {
+          setMessage("An existing payment was found, but payment options could not be refreshed.");
+        }
+        return;
+      }
       if (!r.ok)
         throw new Error(data.error?.message || "Payment could not be started.");
       if (data.checkoutUrl) {
