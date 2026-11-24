@@ -1,6 +1,10 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { nextBillingMonth, toPaystackMinorUnits, verifyPaystackSignature } from "./paystack";
+import {
+  nextBillingMonth,
+  toPaystackMinorUnits,
+  verifyPaystackSignature,
+} from "./paystack";
 
 describe("Paystack payment boundaries", () => {
   it("converts KES amounts to exact minor units", () => {
@@ -20,6 +24,8 @@ describe("Paystack payment boundaries", () => {
   });
 
   it("clamps month-end renewals", () => {
-    expect(nextBillingMonth(new Date("2026-01-31T12:00:00.000Z"))).toBe("2026-02-28T12:00:00.000Z");
+    expect(nextBillingMonth(new Date("2026-01-31T12:00:00.000Z"))).toBe(
+      "2026-02-28T12:00:00.000Z",
+    );
   });
 });

@@ -92,13 +92,11 @@ export async function POST(request: Request) {
       if (error) throw error;
     } else if (input.action === "share") {
       const result = input.enabled
-        ? await admin
-            .from("vehicle_history_shares")
-            .upsert({
-              vehicle_id: input.vehicleId,
-              owner_id: user.id,
-              franchise_id: input.franchiseId,
-            })
+        ? await admin.from("vehicle_history_shares").upsert({
+            vehicle_id: input.vehicleId,
+            owner_id: user.id,
+            franchise_id: input.franchiseId,
+          })
         : await admin
             .from("vehicle_history_shares")
             .delete()
@@ -107,15 +105,13 @@ export async function POST(request: Request) {
             .eq("franchise_id", input.franchiseId);
       if (result.error) throw result.error;
     } else if (input.action === "reminder") {
-      const { error } = await admin
-        .from("maintenance_reminders")
-        .insert({
-          vehicle_id: input.vehicleId,
-          owner_id: user.id,
-          title: input.title,
-          due_date: input.dueDate,
-          due_mileage: input.dueMileage,
-        });
+      const { error } = await admin.from("maintenance_reminders").insert({
+        vehicle_id: input.vehicleId,
+        owner_id: user.id,
+        title: input.title,
+        due_date: input.dueDate,
+        due_mileage: input.dueMileage,
+      });
       if (error) throw error;
     } else {
       const { error } = await admin

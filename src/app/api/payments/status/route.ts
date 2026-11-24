@@ -28,7 +28,8 @@ export async function GET(request: Request) {
     if (["PENDING", "PROCESSING"].includes(status)) {
       const provider = getPaymentProvider(payment.provider);
       if (payment.provider === "PAYSTACK")
-        status = (await reconcilePaystackTransaction(reference)).status ?? status;
+        status =
+          (await reconcilePaystackTransaction(reference)).status ?? status;
       else if (provider)
         status = (await provider.verifyPayment(reference)).status;
       else if (payment.provider === "STRIPE" && payment.provider_reference)

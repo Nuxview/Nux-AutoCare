@@ -59,7 +59,8 @@ it.each([
     );
     for (const effect of fixture.effects) effect();
     await vi.waitFor(() => expect(fixture.state).toHaveBeenCalledWith(message));
-    expect(fixture.request.mock.calls.filter(([url]) => url === summaryUrl))
-      .toHaveLength(summaryRequests);
+    expect(
+      fixture.request.mock.calls.filter(([url]) => url === summaryUrl),
+    ).toHaveLength(summaryRequests);
   },
 );

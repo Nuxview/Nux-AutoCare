@@ -67,7 +67,9 @@ describe("Booking service validation and database responses", () => {
   });
 
   it("maps a database capacity rejection to HTTP 409", async () => {
-    const validFutureTime = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
+    const validFutureTime = new Date(
+      Date.now() + 2 * 24 * 60 * 60 * 1000,
+    ).toISOString();
 
     // Database RPC signals CAPACITY_REACHED when count >= booking_capacity
     mockRpc.mockResolvedValue({
@@ -89,7 +91,9 @@ describe("Booking service validation and database responses", () => {
   });
 
   it("loads and returns the booking created by the database", async () => {
-    const validFutureTime = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
+    const validFutureTime = new Date(
+      Date.now() + 2 * 24 * 60 * 60 * 1000,
+    ).toISOString();
     const createdBookingId = "66666666-6666-4666-8666-666666666666";
 
     mockRpc.mockResolvedValue({

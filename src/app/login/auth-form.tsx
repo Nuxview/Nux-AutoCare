@@ -7,7 +7,14 @@ import { useRouter } from "next/navigation";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { ArrowLeft, ArrowRight, CheckCircle2, KeyRound, LoaderCircle, Mail } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  CheckCircle2,
+  KeyRound,
+  LoaderCircle,
+  Mail,
+} from "lucide-react";
 import { authFormSchema } from "@/lib/validation";
 import { createClient } from "@/lib/supabase/browser";
 
@@ -21,8 +28,16 @@ type ErrorResponse = {
 };
 
 const formFields = new Set<keyof Form>([
-  "accountType", "firstName", "lastName", "email", "phone", "password",
-  "businessName", "shopName", "county", "address",
+  "accountType",
+  "firstName",
+  "lastName",
+  "email",
+  "phone",
+  "password",
+  "businessName",
+  "shopName",
+  "county",
+  "address",
 ]);
 
 /**
@@ -30,13 +45,25 @@ const formFields = new Set<keyof Form>([
  *
  * @param props.initialMode Initial mode to display ('login' | 'register' | 'reset')
  */
-export function AuthForm({ initialMode, invalidLink = false }: { initialMode: "login" | "register" | "reset"; invalidLink?: boolean }) {
+export function AuthForm({
+  initialMode,
+  invalidLink = false,
+}: {
+  initialMode: "login" | "register" | "reset";
+  invalidLink?: boolean;
+}) {
   const router = useRouter();
-  const [formError, setFormError] = useState(invalidLink ? "This email link is expired or invalid. Request a new link and open it in the same browser where you started." : "");
+  const [formError, setFormError] = useState(
+    invalidLink
+      ? "This email link is expired or invalid. Request a new link and open it in the same browser where you started."
+      : "",
+  );
   const [notice, setNotice] = useState("");
 
   // Reset password flow states
-  const [isResetPassword, setIsResetPassword] = useState(initialMode === "reset");
+  const [isResetPassword, setIsResetPassword] = useState(
+    initialMode === "reset",
+  );
   const [newPassword, setNewPassword] = useState("");
   const [newPasswordError, setNewPasswordError] = useState("");
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
@@ -58,7 +85,10 @@ export function AuthForm({ initialMode, invalidLink = false }: { initialMode: "l
     formState: { errors, isSubmitting },
   } = useForm<Form>({
     resolver: zodResolver(authFormSchema),
-    defaultValues: { mode: initialMode === "reset" ? "login" : initialMode, accountType: "customer" },
+    defaultValues: {
+      mode: initialMode === "reset" ? "login" : initialMode,
+      accountType: "customer",
+    },
   });
   const mode = useWatch({ control, name: "mode" });
   const accountType = useWatch({ control, name: "accountType" });
@@ -73,7 +103,8 @@ export function AuthForm({ initialMode, invalidLink = false }: { initialMode: "l
 
   function switchAccountType(nextType: "customer" | "garage") {
     setValue("accountType", nextType);
-    if (nextType === "customer") clearErrors(["businessName", "shopName", "county", "address"]);
+    if (nextType === "customer")
+      clearErrors(["businessName", "shopName", "county", "address"]);
   }
 
   function openForgotPassword(prefillEmail?: string) {
@@ -126,7 +157,9 @@ export function AuthForm({ initialMode, invalidLink = false }: { initialMode: "l
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!forgotEmail || !emailRegex.test(forgotEmail.trim())) {
-      setForgotError("Please enter a valid email address (e.g. name@example.com).");
+      setForgotError(
+        "Please enter a valid email address (e.g. name@example.com).",
+      );
       return;
     }
 
@@ -149,13 +182,27 @@ export function AuthForm({ initialMode, invalidLink = false }: { initialMode: "l
     setFormError("");
     setNotice("");
     const { mode: submittedMode, ...registration } = data;
-    const payload = submittedMode === "login" ? { email: data.email, password: data.password } : registration;
-    const response = await request(`/api/auth/${submittedMode}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
-    const result = await response.json() as ErrorResponse & { requiresEmailConfirmation?: boolean };
+    const payload =
+      submittedMode === "login"
+        ? { email: data.email, password: data.password }
+        : registration;
+    const response = await request(`/api/auth/${submittedMode}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const result = (await response.json()) as ErrorResponse & {
+      requiresEmailConfirmation?: boolean;
+    };
     if (!response.ok) {
-      for (const [field, messages] of Object.entries(result.error?.details?.fieldErrors ?? {})) {
+      for (const [field, messages] of Object.entries(
+        result.error?.details?.fieldErrors ?? {},
+      )) {
         if (formFields.has(field as keyof Form) && messages[0]) {
-          setError(field as keyof Form, { type: "server", message: messages[0] });
+          setError(field as keyof Form, {
+            type: "server",
+            message: messages[0],
+          });
         }
       }
       setFormError(result.error?.message ?? "Unable to continue");
@@ -166,25 +213,45 @@ export function AuthForm({ initialMode, invalidLink = false }: { initialMode: "l
       setNotice("Check your email to confirm your account, then sign in.");
       return;
     }
-    router.push("/dashboard"); router.refresh();
+    router.push("/dashboard");
+    router.refresh();
   }
 
   if (isResetPassword) {
     return (
       <div className="auth-box" role="region" aria-labelledby="reset-heading">
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            marginTop: 14,
+          }}
+        >
           <div className="auth-icon-badge" aria-hidden="true">
             <KeyRound size={22} />
           </div>
-          <h1 id="reset-heading" style={{ margin: 0 }}>Set new password</h1>
+          <h1 id="reset-heading" style={{ margin: 0 }}>
+            Set new password
+          </h1>
         </div>
-        <form method="post" onSubmit={handleUpdatePassword} className="form-grid" noValidate>
+        <form
+          method="post"
+          onSubmit={handleUpdatePassword}
+          className="form-grid"
+          noValidate
+        >
           {newPasswordError && (
             <div className="field-wide form-error" role="alert">
               {newPasswordError}
             </div>
           )}
-          <Field label="New password" hint="Choose a new password of at least 10 characters." error={newPasswordError} wide>
+          <Field
+            label="New password"
+            hint="Choose a new password of at least 10 characters."
+            error={newPasswordError}
+            wide
+          >
             {(field) => (
               <input
                 {...field}
@@ -235,11 +302,20 @@ export function AuthForm({ initialMode, invalidLink = false }: { initialMode: "l
           <span>Back to {mode === "login" ? "Sign in" : "Sign up"}</span>
         </button>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            marginTop: 14,
+          }}
+        >
           <div className="auth-icon-badge" aria-hidden="true">
             <KeyRound size={22} />
           </div>
-          <h1 id="forgot-heading" style={{ margin: 0 }}>Reset password</h1>
+          <h1 id="forgot-heading" style={{ margin: 0 }}>
+            Reset password
+          </h1>
         </div>
 
         <p style={{ marginTop: 10 }}>
@@ -251,16 +327,31 @@ export function AuthForm({ initialMode, invalidLink = false }: { initialMode: "l
         {forgotSubmitted ? (
           <div className="forgot-success-card" role="status" aria-live="polite">
             <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-              <CheckCircle2 size={24} className="text-green" style={{ flexShrink: 0, marginTop: 2 }} />
+              <CheckCircle2
+                size={24}
+                className="text-green"
+                style={{ flexShrink: 0, marginTop: 2 }}
+              />
               <div>
-                <p style={{ fontWeight: 700, margin: "0 0 6px" }}>Recovery link sent</p>
+                <p style={{ fontWeight: 700, margin: "0 0 6px" }}>
+                  Recovery link sent
+                </p>
                 <p style={{ fontSize: 13, margin: 0, color: "#374151" }}>
-                  If <strong>{forgotEmail}</strong> matches an account in our system, you will receive an email shortly with a secure reset link.
+                  If <strong>{forgotEmail}</strong> matches an account in our
+                  system, you will receive an email shortly with a secure reset
+                  link.
                 </p>
               </div>
             </div>
 
-            <div style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div
+              style={{
+                marginTop: 20,
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+              }}
+            >
               <button
                 type="button"
                 className="btn btn-primary btn-full"
@@ -278,7 +369,12 @@ export function AuthForm({ initialMode, invalidLink = false }: { initialMode: "l
             </div>
           </div>
         ) : (
-          <form method="post" onSubmit={handleResetPassword} className="form-grid" noValidate>
+          <form
+            method="post"
+            onSubmit={handleResetPassword}
+            className="form-grid"
+            noValidate
+          >
             {forgotError && (
               <div className="field-wide form-error" role="alert">
                 {forgotError}
@@ -347,39 +443,121 @@ export function AuthForm({ initialMode, invalidLink = false }: { initialMode: "l
   return (
     <div className="auth-box">
       <h1>{mode === "login" ? "Welcome back" : "Join AutoCare"}</h1>
-      <p>{mode === "login" ? "Sign in to continue to your workspace." : "Create a driver account or start a garage trial."}</p>
+      <p>
+        {mode === "login"
+          ? "Sign in to continue to your workspace."
+          : "Create a driver account or start a garage trial."}
+      </p>
       <div className="tab-switch">
-        <button type="button" className={mode === "login" ? "active" : ""} onClick={() => switchMode("login")}>Sign in</button>
-        <button type="button" className={mode === "register" ? "active" : ""} onClick={() => switchMode("register")}>Create account</button>
+        <button
+          type="button"
+          className={mode === "login" ? "active" : ""}
+          onClick={() => switchMode("login")}
+        >
+          Sign in
+        </button>
+        <button
+          type="button"
+          className={mode === "register" ? "active" : ""}
+          onClick={() => switchMode("register")}
+        >
+          Create account
+        </button>
       </div>
       {mode === "register" && (
         <div className="tab-switch" aria-label="Account type">
-          <button type="button" className={accountType === "customer" ? "active" : ""} onClick={() => switchAccountType("customer")}>I’m a driver</button>
-          <button type="button" className={accountType === "garage" ? "active" : ""} onClick={() => switchAccountType("garage")}>I run a garage</button>
+          <button
+            type="button"
+            className={accountType === "customer" ? "active" : ""}
+            onClick={() => switchAccountType("customer")}
+          >
+            I’m a driver
+          </button>
+          <button
+            type="button"
+            className={accountType === "garage" ? "active" : ""}
+            onClick={() => switchAccountType("garage")}
+          >
+            I run a garage
+          </button>
         </div>
       )}
-      {formError && <div className="form-error" role="alert">{formError}</div>}
-      {notice && <div className="form-error" role="status">{notice}</div>}
-      <form method="post" className="form-grid" onSubmit={handleSubmit(onSubmit)} noValidate>
+      {formError && (
+        <div className="form-error" role="alert">
+          {formError}
+        </div>
+      )}
+      {notice && (
+        <div className="form-error" role="status">
+          {notice}
+        </div>
+      )}
+      <form
+        method="post"
+        className="form-grid"
+        onSubmit={handleSubmit(onSubmit)}
+        noValidate
+      >
         {mode === "register" && (
           <>
             <Field label="First name" error={errors.firstName?.message}>
-              {(field) => <input {...field} required className="input" autoComplete="given-name" {...register("firstName")} />}
+              {(field) => (
+                <input
+                  {...field}
+                  required
+                  className="input"
+                  autoComplete="given-name"
+                  {...register("firstName")}
+                />
+              )}
             </Field>
             <Field label="Last name" error={errors.lastName?.message}>
-              {(field) => <input {...field} required className="input" autoComplete="family-name" {...register("lastName")} />}
+              {(field) => (
+                <input
+                  {...field}
+                  required
+                  className="input"
+                  autoComplete="family-name"
+                  {...register("lastName")}
+                />
+              )}
             </Field>
             <Field label="Mobile number" error={errors.phone?.message}>
-              {(field) => <input {...field} required className="input" placeholder="0712 345 678" autoComplete="tel" {...register("phone")} />}
+              {(field) => (
+                <input
+                  {...field}
+                  required
+                  className="input"
+                  placeholder="0712 345 678"
+                  autoComplete="tel"
+                  {...register("phone")}
+                />
+              )}
             </Field>
           </>
         )}
-        <Field label="Email address" error={errors.email?.message} wide={mode === "login"}>
-          {(field) => <input {...field} className="input" type="email" autoComplete="email" {...register("email")} />}
+        <Field
+          label="Email address"
+          error={errors.email?.message}
+          wide={mode === "login"}
+        >
+          {(field) => (
+            <input
+              {...field}
+              className="input"
+              type="email"
+              autoComplete="email"
+              {...register("email")}
+            />
+          )}
         </Field>
         <Field
           label="Password"
-          hint={mode === "register" ? "10+ characters, upper/lowercase and a number" : undefined}
+          hint={
+            mode === "register"
+              ? "10+ characters, upper/lowercase and a number"
+              : undefined
+          }
           error={errors.password?.message}
           wide
         >
@@ -388,7 +566,9 @@ export function AuthForm({ initialMode, invalidLink = false }: { initialMode: "l
               {...field}
               className="input"
               type="password"
-              autoComplete={mode === "login" ? "current-password" : "new-password"}
+              autoComplete={
+                mode === "login" ? "current-password" : "new-password"
+              }
               {...register("password")}
             />
           )}
@@ -396,16 +576,45 @@ export function AuthForm({ initialMode, invalidLink = false }: { initialMode: "l
         {mode === "register" && accountType === "garage" && (
           <>
             <Field label="Business name" error={errors.businessName?.message}>
-              {(field) => <input {...field} required className="input" {...register("businessName")} />}
+              {(field) => (
+                <input
+                  {...field}
+                  required
+                  className="input"
+                  {...register("businessName")}
+                />
+              )}
             </Field>
             <Field label="First shop name" error={errors.shopName?.message}>
-              {(field) => <input {...field} required className="input" {...register("shopName")} />}
+              {(field) => (
+                <input
+                  {...field}
+                  required
+                  className="input"
+                  {...register("shopName")}
+                />
+              )}
             </Field>
             <Field label="County" error={errors.county?.message}>
-              {(field) => <input {...field} required className="input" placeholder="Nairobi" {...register("county")} />}
+              {(field) => (
+                <input
+                  {...field}
+                  required
+                  className="input"
+                  placeholder="Nairobi"
+                  {...register("county")}
+                />
+              )}
             </Field>
             <Field label="Street address" error={errors.address?.message}>
-              {(field) => <input {...field} required className="input" {...register("address")} />}
+              {(field) => (
+                <input
+                  {...field}
+                  required
+                  className="input"
+                  {...register("address")}
+                />
+              )}
             </Field>
           </>
         )}
@@ -423,7 +632,14 @@ export function AuthForm({ initialMode, invalidLink = false }: { initialMode: "l
         )}
         <div className="field-wide">
           <button className="btn btn-primary btn-full" disabled={isSubmitting}>
-            {isSubmitting ? <LoaderCircle className="animate-spin" size={17} /> : <>{mode === "login" ? "Sign in" : "Create account"}<ArrowRight size={17} /></>}
+            {isSubmitting ? (
+              <LoaderCircle className="animate-spin" size={17} />
+            ) : (
+              <>
+                {mode === "login" ? "Sign in" : "Create account"}
+                <ArrowRight size={17} />
+              </>
+            )}
           </button>
           {mode === "login" && (
             <div className="login-forgot-action">
@@ -438,12 +654,17 @@ export function AuthForm({ initialMode, invalidLink = false }: { initialMode: "l
           )}
         </div>
       </form>
-      <p className="auth-foot">By continuing, you agree to AutoCare’s terms and privacy policy.</p>
+      <p className="auth-foot">
+        By continuing, you agree to AutoCare’s terms and privacy policy.
+      </p>
     </div>
   );
 }
 
-type FieldControl = Pick<ComponentProps<"input">, "id" | "aria-describedby" | "aria-invalid">;
+type FieldControl = Pick<
+  ComponentProps<"input">,
+  "id" | "aria-describedby" | "aria-invalid"
+>;
 
 function Field({
   label,
@@ -466,11 +687,21 @@ function Field({
   return (
     <div className={`field${wide ? " field-wide" : ""}`}>
       <div className="field-header">
-        <label htmlFor={id} className="field-label">{label}</label>
+        <label htmlFor={id} className="field-label">
+          {label}
+        </label>
       </div>
-      {children({ id, "aria-describedby": description || undefined, "aria-invalid": error ? true : undefined })}
+      {children({
+        id,
+        "aria-describedby": description || undefined,
+        "aria-invalid": error ? true : undefined,
+      })}
       {hint && <small id={hintId}>{hint}</small>}
-      {error && <span id={errorId} className="error-text">{error}</span>}
+      {error && (
+        <span id={errorId} className="error-text">
+          {error}
+        </span>
+      )}
     </div>
   );
 }

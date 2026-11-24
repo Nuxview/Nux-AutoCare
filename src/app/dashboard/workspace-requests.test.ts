@@ -1,4 +1,9 @@
-import { createElement, useState, type ComponentType, type EffectCallback } from "react";
+import {
+  createElement,
+  useState,
+  type ComponentType,
+  type EffectCallback,
+} from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -92,7 +97,9 @@ function mount(Page: ComponentType, workspace: Workspace) {
 describe("pages reuse the dashboard workspace", () => {
   it("keeps workspace links and the sign-out button named with compact labels", () => {
     vi.mocked(useState).mockReturnValueOnce([false, vi.fn()]);
-    const markup = renderToStaticMarkup(createElement(DashboardShell, null, null));
+    const markup = renderToStaticMarkup(
+      createElement(DashboardShell, null, null),
+    );
     expect(markup).toContain('aria-label="AutoCare"');
     expect(markup).toContain('aria-label="My overview" aria-current="page"');
     expect(markup).toContain('aria-label="Garage visits"');

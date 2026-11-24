@@ -245,10 +245,15 @@ describe("Paystack invoice reconciliation (mocked provider)", () => {
     async (providerStatus, httpStatus, paymentStatus) => {
       fixture.transaction.status = providerStatus;
       const response = await getPaymentStatus(
-        new Request(`http://localhost/api/payments/status?reference=${reference}`),
+        new Request(
+          `http://localhost/api/payments/status?reference=${reference}`,
+        ),
       );
       expect(response.status).toBe(httpStatus);
-      expect(await response.json()).toEqual({ status: paymentStatus, test: true });
+      expect(await response.json()).toEqual({
+        status: paymentStatus,
+        test: true,
+      });
       expect(fixture.payment!.status).toBe(paymentStatus);
       expect(fixture.rpc).toHaveBeenCalledTimes(
         providerStatus === "success" ? 1 : 0,

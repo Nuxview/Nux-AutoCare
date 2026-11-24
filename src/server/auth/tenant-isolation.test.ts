@@ -75,22 +75,24 @@ describe("AREA 1: Tenant isolation and permissions", () => {
         eq: vi.fn().mockImplementation((col1: string, val1: string) => ({
           eq: vi.fn().mockImplementation((col2: string, val2: string) => ({
             eq: vi.fn().mockImplementation((col3: string, val3: boolean) => ({
-              in: vi.fn().mockImplementation((roleCol: string, roles: string[]) => {
-                const filtered = memberships.filter(
-                  (m) =>
-                    m.user_id === val1 &&
-                    m.franchise_id === val2 &&
-                    m.is_active === val3 &&
-                    roles.includes(m.role as string),
-                );
-                return Promise.resolve({
-                  data: filtered.map((m) => ({
-                    ...m,
-                    franchise: { status: franchiseStatus },
-                  })),
-                  error: null,
-                });
-              }),
+              in: vi
+                .fn()
+                .mockImplementation((roleCol: string, roles: string[]) => {
+                  const filtered = memberships.filter(
+                    (m) =>
+                      m.user_id === val1 &&
+                      m.franchise_id === val2 &&
+                      m.is_active === val3 &&
+                      roles.includes(m.role as string),
+                  );
+                  return Promise.resolve({
+                    data: filtered.map((m) => ({
+                      ...m,
+                      franchise: { status: franchiseStatus },
+                    })),
+                    error: null,
+                  });
+                }),
               then: (resolve: (value: unknown) => void) => {
                 const filtered = memberships.filter(
                   (m) =>
@@ -127,9 +129,7 @@ describe("AREA 1: Tenant isolation and permissions", () => {
     ]);
 
     // Calling requireTenantMembership for Garage B must throw TENANT_ACCESS_DENIED
-    await expect(
-      requireTenantMembership(GARAGE_B_ID),
-    ).rejects.toMatchObject({
+    await expect(requireTenantMembership(GARAGE_B_ID)).rejects.toMatchObject({
       status: 403,
       code: "TENANT_ACCESS_DENIED",
       message: "You do not have access to this garage",
@@ -168,9 +168,7 @@ describe("AREA 1: Tenant isolation and permissions", () => {
       "SUSPENDED",
     );
 
-    await expect(
-      requireTenantMembership(GARAGE_A_ID),
-    ).rejects.toMatchObject({
+    await expect(requireTenantMembership(GARAGE_A_ID)).rejects.toMatchObject({
       status: 403,
       code: "TENANT_SUSPENDED",
       message: "This garage account is not active",
@@ -191,7 +189,10 @@ describe("AREA 1: Tenant isolation and permissions", () => {
 
     // Request requires FRANCHISE_OWNER or FRANCHISE_ADMIN
     await expect(
-      requireTenantMembership(GARAGE_A_ID, undefined, ["FRANCHISE_OWNER", "FRANCHISE_ADMIN"]),
+      requireTenantMembership(GARAGE_A_ID, undefined, [
+        "FRANCHISE_OWNER",
+        "FRANCHISE_ADMIN",
+      ]),
     ).rejects.toMatchObject({
       status: 403,
       code: "TENANT_ACCESS_DENIED",

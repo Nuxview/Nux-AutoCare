@@ -6,17 +6,17 @@ Stripe Checkout and M-Pesa Express currently run in **sandbox only**. Live keys 
 
 Set these on the `autocare` project, Production environment, then redeploy:
 
-| Variable | Value/source |
-| --- | --- |
-| APP_URL | `https://autocare-orcin-iota.vercel.app` |
-| PAYMENT_TEST_FRANCHISE_ID | Dedicated demo garage UUID |
-| STRIPE_SECRET_KEY | Stripe sandbox key beginning `sk_test_` |
-| STRIPE_WEBHOOK_SECRET | Signing secret for the endpoint below, beginning `whsec_` |
-| MPESA_ENV | `sandbox` |
-| MPESA_CONSUMER_KEY | AutoCare Daraja sandbox app |
-| MPESA_CONSUMER_SECRET | AutoCare Daraja sandbox app |
-| MPESA_SHORTCODE | Lipa Na M-Pesa sandbox business shortcode |
-| MPESA_PASSKEY | Lipa Na M-Pesa sandbox passkey |
+| Variable                  | Value/source                                              |
+| ------------------------- | --------------------------------------------------------- |
+| APP_URL                   | `https://autocare-orcin-iota.vercel.app`                  |
+| PAYMENT_TEST_FRANCHISE_ID | Dedicated demo garage UUID                                |
+| STRIPE_SECRET_KEY         | Stripe sandbox key beginning `sk_test_`                   |
+| STRIPE_WEBHOOK_SECRET     | Signing secret for the endpoint below, beginning `whsec_` |
+| MPESA_ENV                 | `sandbox`                                                 |
+| MPESA_CONSUMER_KEY        | AutoCare Daraja sandbox app                               |
+| MPESA_CONSUMER_SECRET     | AutoCare Daraja sandbox app                               |
+| MPESA_SHORTCODE           | Lipa Na M-Pesa sandbox business shortcode                 |
+| MPESA_PASSKEY             | Lipa Na M-Pesa sandbox passkey                            |
 
 Store provider credentials as Vercel **Secret** variables. Do not prefix them with NEXT_PUBLIC, put them in source control, or enter them into customer-facing forms. Existing Supabase and encryption variables must remain intact.
 

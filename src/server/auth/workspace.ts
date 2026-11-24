@@ -8,7 +8,9 @@ export async function loadWorkspace(timing: RequestTiming) {
   const { data, error } = await timing.measure("memberships", () =>
     admin
       .from("memberships")
-      .select("id,role,franchise_id,shop_id,franchise:franchises(id,name,slug,status),shop:shops(id,name)")
+      .select(
+        "id,role,franchise_id,shop_id,franchise:franchises(id,name,slug,status),shop:shops(id,name)",
+      )
       .eq("user_id", user.id)
       .eq("is_active", true)
       .order("created_at")

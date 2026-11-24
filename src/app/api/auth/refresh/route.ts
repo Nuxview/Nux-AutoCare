@@ -5,5 +5,7 @@ export async function POST() {
   try {
     await requireAuthenticatedUser();
     return Response.json({ ok: true });
-  } catch (error) { return jsonError(error); }
+  } catch (error) {
+    return jsonError(error);
+  }
 }

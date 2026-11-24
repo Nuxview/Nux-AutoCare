@@ -1,27 +1,54 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  randomBytes,
+} from "node:crypto";
 
 function encryptionKey() {
   const raw = process.env.FIELD_ENCRYPTION_KEY;
   if (!raw) throw new Error("FIELD_ENCRYPTION_KEY is required");
   const decoded = Buffer.from(raw, "base64");
-  if (decoded.length !== 32) throw new Error("FIELD_ENCRYPTION_KEY must be a base64-encoded 32-byte key");
+  if (decoded.length !== 32)
+    throw new Error(
+      "FIELD_ENCRYPTION_KEY must be a base64-encoded 32-byte key",
+    );
   return decoded;
 }
 
 export function encryptField(plaintext: string) {
   const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
-  const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  const cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv, {
+    authTagLength: 16,
+  });
+  const ciphertext = Buffer.concat([
+    cipher.update(plaintext, "utf8"),
+    cipher.final(),
+  ]);
   const tag = cipher.getAuthTag();
-  return ["v1", iv.toString("base64url"), tag.toString("base64url"), ciphertext.toString("base64url")].join(".");
+  return [
+    "v1",
+    iv.toString("base64url"),
+    tag.toString("base64url"),
+    ciphertext.toString("base64url"),
+  ].join(".");
 }
 
 export function decryptField(payload: string) {
   const [version, iv, tag, ciphertext] = payload.split(".");
-  if (version !== "v1" || !iv || !tag || !ciphertext) throw new Error("Invalid encrypted field");
-  const decipher = createDecipheriv("aes-256-gcm", encryptionKey(), Buffer.from(iv, "base64url"));
+  if (version !== "v1" || !iv || !tag || !ciphertext)
+    throw new Error("Invalid encrypted field");
+  const decipher = createDecipheriv(
+    "aes-256-gcm",
+    encryptionKey(),
+    Buffer.from(iv, "base64url"),
+    { authTagLength: 16 },
+  );
   decipher.setAuthTag(Buffer.from(tag, "base64url"));
-  return Buffer.concat([decipher.update(Buffer.from(ciphertext, "base64url")), decipher.final()]).toString("utf8");
+  return Buffer.concat([
+    decipher.update(Buffer.from(ciphertext, "base64url")),
+    decipher.final(),
+  ]).toString("utf8");
 }
 
 export function deterministicHash(value: string) {

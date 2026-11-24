@@ -171,7 +171,12 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
         <div className="side-profile">
-          <button type="button" aria-label="Sign out" onClick={logout} className="side-link sign-out">
+          <button
+            type="button"
+            aria-label="Sign out"
+            onClick={logout}
+            className="side-link sign-out"
+          >
             <LogOut size={17} />
             <span>Sign out</span>
           </button>

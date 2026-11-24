@@ -1,0 +1,15 @@
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "Verified Graphify checksums for three access-control migrations"
+condition = "AND"
+paths = ['(^|/)graphify-out/cache/stat-index\.json$']
+regexes = [
+  "^119086c23578806d39a098de305d7384a0a5214a06c4a0d3e4b4b0d76a680d8e$",
+  "^7f9a5f783afdb9c956b95608b5a19537b44749f37c01788872471f8c3fef8164$",
+  "^0367dc9febceac2d3286e5a1e1f4ed447a932d390ed1a401cc20cacfbdbe3364$",
+]
