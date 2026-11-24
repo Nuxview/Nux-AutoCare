@@ -141,7 +141,7 @@ export default function BillingPage() {
     <div className="app-content">
       <div className="welcome">
         <div>
-          <h2>Billing & payouts</h2>
+          <h2>Billing &amp; payouts</h2>
           <p>
             Manage your garage subscription and where customer payments settle.
           </p>

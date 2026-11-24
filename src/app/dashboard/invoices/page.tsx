@@ -83,7 +83,7 @@ export default function InvoicesPage() {
     <div className="app-content">
       <div className="welcome">
         <div>
-          <h2>Invoices & payments</h2>
+          <h2>Invoices &amp; payments</h2>
           <p>Real-time billing records and reconciled payments.</p>
         </div>
       </div>

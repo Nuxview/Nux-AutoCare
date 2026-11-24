@@ -262,7 +262,7 @@ export default function BookingsPage() {
                         className="btn btn-primary"
                         onClick={() => startJob(b.id)}
                       >
-                        Check in & start repair
+                        Check in &amp; start repair
                       </button>
                     )}
                   </div>

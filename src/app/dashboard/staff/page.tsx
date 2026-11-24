@@ -61,7 +61,7 @@ export default function StaffPage() {
   }
   return (
     <div className="app-content workflow-stack">
-      <h2>Staff & invitations</h2>
+      <h2>Staff &amp; invitations</h2>
       <p>
         Invite staff into your garage workspace. Each person uses their own
         verified account. Share the sign-in address with them; no email is sent

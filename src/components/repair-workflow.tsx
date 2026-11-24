@@ -109,7 +109,7 @@ export function RepairWorkflow({
   }
   return (
     <section className="workflow-stack">
-      <h3>Quotes & approval</h3>
+      <h3>Quotes &amp; approval</h3>
       {message && <p role="status">{message}</p>}
       {quotes.map((q, index) => (
         <article className="workflow-card" key={q.id}>
@@ -304,7 +304,7 @@ export function RepairWorkflow({
           </button>
         </form>
       )}
-      <h3>Parts used & returned</h3>
+      <h3>Parts used &amp; returned</h3>
       {movements.map((m) => (
         <div key={m.id}>
           {m.item.name} · {Number(m.quantity) > 0 ? "Used" : "Returned"}{" "}

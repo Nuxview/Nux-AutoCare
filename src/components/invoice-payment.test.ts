@@ -1,8 +1,10 @@
 import { Children, isValidElement, useState, type ReactNode } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 
+type ReactModule = typeof import("react");
+
 vi.mock("react", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("react")>()),
+  ...(await importOriginal<ReactModule>()),
   useState: vi.fn(),
 }));
 vi.mock("@/lib/client-cache", () => ({ request: vi.fn() }));

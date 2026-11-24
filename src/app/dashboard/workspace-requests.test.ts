@@ -7,6 +7,8 @@ import {
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+type ReactModule = typeof import("react");
+
 const { effects } = vi.hoisted(() => ({ effects: [] as EffectCallback[] }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: vi.fn(), push: vi.fn(), refresh: vi.fn() }),
@@ -14,7 +16,7 @@ vi.mock("next/navigation", () => ({
 }));
 // Run mount effects explicitly to count page requests without a browser or live backend.
 vi.mock("react", async (importOriginal) => {
-  const react = await importOriginal<typeof import("react")>();
+  const react = await importOriginal<ReactModule>();
   return {
     ...react,
     useState: vi.fn(react.useState),

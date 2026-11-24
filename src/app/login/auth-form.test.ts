@@ -3,10 +3,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { expect, it, vi } from "vitest";
 import { AuthForm } from "./auth-form";
 
+type ReactHookFormModule = typeof import("react-hook-form");
+
 vi.mock("next/navigation", () => ({ useRouter: () => ({}) }));
 
 vi.mock("react-hook-form", async (importOriginal) => {
-  const library = await importOriginal<typeof import("react-hook-form")>();
+  const library = await importOriginal<ReactHookFormModule>();
   return {
     ...library,
     useForm: (...args: Parameters<typeof library.useForm>) => {
