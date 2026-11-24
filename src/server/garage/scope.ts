@@ -40,7 +40,10 @@ export async function garageScope(
   };
 }
 
-export async function bookingAccess(bookingId: string, access: "read" | "write" = "read") {
+export async function bookingAccess(
+  bookingId: string,
+  access: "read" | "write" = "read",
+) {
   const user = await requireAuthenticatedUser();
   const admin = createAdminClient();
   const { data: booking, error } = await admin

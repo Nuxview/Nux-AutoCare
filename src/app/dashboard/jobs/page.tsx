@@ -316,7 +316,7 @@ export default function JobsPage() {
                           className="btn btn-secondary"
                           onClick={() => setJobStatus(job.id, "COMPLETED")}
                         >
-                          Mark collected & complete
+                          Mark collected &amp; complete
                         </button>
                       </div>
                     )}

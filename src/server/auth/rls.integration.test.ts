@@ -122,13 +122,15 @@ describe("PART A: Real Row-Level Security (RLS) enforcement", () => {
     shopBId = shopB!.id;
 
     // 5. Assign user as active member of Garage A ONLY
-    const { error: memberError } = await adminClient.from("memberships").insert({
-      user_id: testUserId,
-      franchise_id: garageAId,
-      shop_id: shopAId,
-      role: "MECHANIC",
-      is_active: true,
-    });
+    const { error: memberError } = await adminClient
+      .from("memberships")
+      .insert({
+        user_id: testUserId,
+        franchise_id: garageAId,
+        shop_id: shopAId,
+        role: "MECHANIC",
+        is_active: true,
+      });
     expect(memberError).toBeNull();
 
     // 6. Seed vehicles, bookings, jobs, and invoices for Garage A and Garage B
@@ -295,13 +297,25 @@ describe("PART A: Real Row-Level Security (RLS) enforcement", () => {
    */
   afterAll(async () => {
     if (adminClient && testUserId) {
-      await adminClient.from("invoices").delete().in("id", [invoiceAId, invoiceBId]);
+      await adminClient
+        .from("invoices")
+        .delete()
+        .in("id", [invoiceAId, invoiceBId]);
       await adminClient.from("jobs").delete().in("id", [jobAId, jobBId]);
-      await adminClient.from("bookings").delete().in("id", [bookingAId, bookingBId]);
-      await adminClient.from("vehicles").delete().in("id", [vehicleAId, vehicleBId]);
+      await adminClient
+        .from("bookings")
+        .delete()
+        .in("id", [bookingAId, bookingBId]);
+      await adminClient
+        .from("vehicles")
+        .delete()
+        .in("id", [vehicleAId, vehicleBId]);
       await adminClient.from("memberships").delete().eq("user_id", testUserId);
       await adminClient.from("shops").delete().in("id", [shopAId, shopBId]);
-      await adminClient.from("franchises").delete().in("id", [garageAId, garageBId]);
+      await adminClient
+        .from("franchises")
+        .delete()
+        .in("id", [garageAId, garageBId]);
       await adminClient.from("profiles").delete().eq("id", testUserId);
       await adminClient.auth.admin.deleteUser(testUserId);
     }
@@ -309,15 +323,25 @@ describe("PART A: Real Row-Level Security (RLS) enforcement", () => {
 
   it("denies direct operational reads for members of either garage and preserves server access", async () => {
     expect(
-      await authenticatedAnonClient.from("profiles").select("id").eq("id", testUserId).single(),
+      await authenticatedAnonClient
+        .from("profiles")
+        .select("id")
+        .eq("id", testUserId)
+        .single(),
     ).toMatchObject({ status: 200, error: null, data: { id: testUserId } });
 
     await Promise.all(
       ["jobs", "bookings", "invoices"].flatMap((table) =>
         [garageAId, garageBId].map(async (franchiseId) => {
           const [denied, server] = await Promise.all([
-            authenticatedAnonClient.from(table).select("id").eq("franchise_id", franchiseId),
-            adminClient.from(table).select("id").eq("franchise_id", franchiseId),
+            authenticatedAnonClient
+              .from(table)
+              .select("id")
+              .eq("franchise_id", franchiseId),
+            adminClient
+              .from(table)
+              .select("id")
+              .eq("franchise_id", franchiseId),
           ]);
           expect(denied.error?.code).toBe("42501");
           expect(denied.status).toBe(403);
@@ -331,14 +355,16 @@ describe("PART A: Real Row-Level Security (RLS) enforcement", () => {
 
   it("asserts a write to a Garage B row fails for a user who only belongs to Garage A", async () => {
     // Attempt inserting a job under Garage B using Garage A member session
-    const { error: insertError, status } = await authenticatedAnonClient.from("jobs").insert({
-      reference: `EXPLOIT-${timestamp}`,
-      franchise_id: garageBId,
-      shop_id: shopBId,
-      customer_id: testUserId,
-      vehicle_id: vehicleBId,
-      status: "OPEN",
-    });
+    const { error: insertError, status } = await authenticatedAnonClient
+      .from("jobs")
+      .insert({
+        reference: `EXPLOIT-${timestamp}`,
+        franchise_id: garageBId,
+        shop_id: shopBId,
+        customer_id: testUserId,
+        vehicle_id: vehicleBId,
+        status: "OPEN",
+      });
 
     expect(insertError?.code).toBe("42501");
     expect(status).toBe(403);
@@ -346,7 +372,9 @@ describe("PART A: Real Row-Level Security (RLS) enforcement", () => {
 
   it("denies anonymous operational table reads", async () => {
     for (const table of ["jobs", "bookings", "invoices"]) {
-      const { data, error, status } = await unauthenticatedAnonClient.from(table).select("id");
+      const { data, error, status } = await unauthenticatedAnonClient
+        .from(table)
+        .select("id");
       expect(error?.code).toBe("42501");
       expect(status).toBe(401);
       expect(data).toBeNull();

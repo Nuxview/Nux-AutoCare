@@ -30,21 +30,29 @@ export function jsonError(error: unknown) {
   if (typeof error === "object" && error !== null && "message" in error) {
     const message = String(error.message);
     const tenantErrors = {
-      TENANT_READ_ONLY: "This garage is read-only until its subscription is renewed",
+      TENANT_READ_ONLY:
+        "This garage is read-only until its subscription is renewed",
       TENANT_SUSPENDED: "This garage account is not active",
     };
     for (const [code, text] of Object.entries(tenantErrors)) {
       if (message === code)
-        return Response.json({ error: { code, message: text } }, { status: 403 });
+        return Response.json(
+          { error: { code, message: text } },
+          { status: 403 },
+        );
     }
     for (const [code, text] of Object.entries({
-      CHECKOUT_OPEN: "Another payment is already open for this invoice. Check its status first.",
-      INVOICE_NOT_PAYABLE: "This invoice is no longer payable. Refresh the page.",
-      WHOLE_KES_REQUIRED: "M-Pesa requires a whole KES balance. Please use card checkout for this invoice.",
+      CHECKOUT_OPEN:
+        "Another payment is already open for this invoice. Check its status first.",
+      INVOICE_NOT_PAYABLE:
+        "This invoice is no longer payable. Refresh the page.",
+      WHOLE_KES_REQUIRED:
+        "M-Pesa requires a whole KES balance. Please use card checkout for this invoice.",
       APPROVAL_REQUIRED: "The customer must approve the latest quote first.",
       PARTS_MISMATCH: "Record all approved stock parts used before invoicing.",
       JOB_CLOSED: "This repair is closed or invoiced.",
-      JOB_READY: "Repair steps must remain completed while the vehicle is ready for collection.",
+      JOB_READY:
+        "Repair steps must remain completed while the vehicle is ready for collection.",
       INVALID_MILEAGE: "Mileage cannot decrease. Enter a valid reading.",
     })) {
       if (message.includes(code))

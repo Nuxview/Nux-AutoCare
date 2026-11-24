@@ -89,8 +89,11 @@ async function providerRequest(path: string, body: Record<string, unknown>) {
   if (!response.ok) {
     const failure = await response.json().catch(() => null);
     // Only expose the provider's numeric error code, never its raw payload or credentials.
-    const providerCode = typeof failure?.errorCode === "string" && /^\d{3}(?:\.\d{1,6}){1,3}$/.test(failure.errorCode)
-      ? failure.errorCode : String(response.status);
+    const providerCode =
+      typeof failure?.errorCode === "string" &&
+      /^\d{3}(?:\.\d{1,6}){1,3}$/.test(failure.errorCode)
+        ? failure.errorCode
+        : String(response.status);
     throw new ApiError(
       502,
       `M-Pesa request could not be confirmed (provider code ${providerCode}). Check payment status before trying again.`,
@@ -120,7 +123,9 @@ export async function requestStkPush(input: {
     PartyB: shortcode,
     PhoneNumber: input.phone.replace("+", ""),
     CallBackURL: `${paymentAppUrl()}/api/payments/mpesa/callback`,
-    AccountReference: input.accountReference.replace(/[^a-z0-9]/gi, "").slice(0, 12) || "AutoCare",
+    AccountReference:
+      input.accountReference.replace(/[^a-z0-9]/gi, "").slice(0, 12) ||
+      "AutoCare",
     TransactionDesc: "AutoCare test",
   });
   if (String(result.ResponseCode) !== "0" || !result.CheckoutRequestID)
@@ -190,9 +195,15 @@ export async function reconcileMpesa(reference: string) {
 export class MpesaPaymentProvider implements PaymentProvider {
   readonly name = "MPESA" as const;
 
-  async initiatePayment(input: InitiatePaymentInput): Promise<InitiatePaymentResult> {
+  async initiatePayment(
+    input: InitiatePaymentInput,
+  ): Promise<InitiatePaymentResult> {
     if (!input.phone) {
-      throw new ApiError(400, "Phone number is required for M-Pesa", "PHONE_REQUIRED");
+      throw new ApiError(
+        400,
+        "Phone number is required for M-Pesa",
+        "PHONE_REQUIRED",
+      );
     }
     const checkoutRequestId = await requestStkPush({
       phone: input.phone,

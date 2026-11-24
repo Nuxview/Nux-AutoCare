@@ -23,16 +23,22 @@ export async function POST(request: Request) {
       redirectTo: `${process.env.APP_URL || "http://localhost:3000"}/auth/callback?mode=reset`,
     });
     // Keep the public response neutral, but make delivery failures diagnosable.
-    if (error) console.error("Password recovery delivery failed", { code: error.code, status: error.status });
+    if (error)
+      console.error("Password recovery delivery failed", {
+        code: error.code,
+        status: error.status,
+      });
 
     return NextResponse.json({
       success: true,
-      message: "If that email is in our system, we've sent instructions to reset your password.",
+      message:
+        "If that email is in our system, we've sent instructions to reset your password.",
     });
   } catch {
     return NextResponse.json({
       success: true,
-      message: "If that email is in our system, we've sent instructions to reset your password.",
+      message:
+        "If that email is in our system, we've sent instructions to reset your password.",
     });
   }
 }

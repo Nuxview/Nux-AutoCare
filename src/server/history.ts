@@ -46,13 +46,19 @@ export async function vehicleHistory(vehicleId: string) {
         403,
         "The vehicle owner has not shared this history with your garage",
       );
-    await requireTenantMembership(shares.data[0].franchise_id, undefined, [
-      "FRANCHISE_OWNER",
-      "FRANCHISE_ADMIN",
-      "SHOP_MANAGER",
-      "SERVICE_ADVISOR",
-      "MECHANIC",
-    ], false, user);
+    await requireTenantMembership(
+      shares.data[0].franchise_id,
+      undefined,
+      [
+        "FRANCHISE_OWNER",
+        "FRANCHISE_ADMIN",
+        "SHOP_MANAGER",
+        "SERVICE_ADVISOR",
+        "MECHANIC",
+      ],
+      false,
+      user,
+    );
   }
   // Explicit customer-facing fields only: never include another garage's internal notes.
   const jobs = await admin

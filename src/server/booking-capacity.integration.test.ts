@@ -132,11 +132,17 @@ describe("Booking capacity concurrency (real Postgres)", () => {
    */
   afterAll(async () => {
     if (adminClient && testUserId) {
-      await adminClient.from("notifications").delete().eq("user_id", testUserId);
+      await adminClient
+        .from("notifications")
+        .delete()
+        .eq("user_id", testUserId);
       await adminClient.from("bookings").delete().eq("shop_id", shopId);
       await adminClient.from("vehicles").delete().eq("id", vehicleId);
       await adminClient.from("shops").delete().eq("id", shopId);
-      await adminClient.from("subscriptions").delete().eq("franchise_id", franchiseId);
+      await adminClient
+        .from("subscriptions")
+        .delete()
+        .eq("franchise_id", franchiseId);
       await adminClient.from("plans").delete().eq("id", planId);
       await adminClient.from("franchises").delete().eq("id", franchiseId);
       await adminClient.from("profiles").delete().eq("id", testUserId);
@@ -172,9 +178,11 @@ describe("Booking capacity concurrency (real Postgres)", () => {
     expect(fulfilled).toHaveLength(1);
     expect(rejected).toHaveLength(concurrency - 1);
     for (const failure of rejected) {
-      expect(String((failure.reason as { message?: string })?.message ?? failure.reason)).toContain(
-        "CAPACITY_REACHED",
-      );
+      expect(
+        String(
+          (failure.reason as { message?: string })?.message ?? failure.reason,
+        ),
+      ).toContain("CAPACITY_REACHED");
     }
   }, 30000);
 });

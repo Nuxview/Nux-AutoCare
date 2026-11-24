@@ -13,24 +13,40 @@ const baseUrl = "https://api.paystack.co";
 export function paystackSecretKey() {
   const key = process.env.PAYSTACK_SECRET_KEY;
   if (!key || !/^sk_(test|live)_/.test(key)) {
-    throw new ApiError(503, "Paystack is not configured", "PAYMENT_PROVIDER_UNAVAILABLE");
+    throw new ApiError(
+      503,
+      "Paystack is not configured",
+      "PAYMENT_PROVIDER_UNAVAILABLE",
+    );
   }
   return key;
 }
 
 type PaystackResponse<T> = { status: boolean; message: string; data: T };
 
-export async function paystackRequest<T>(path: string, options: { method?: "GET" | "POST"; body?: unknown } = {}): Promise<T> {
+export async function paystackRequest<T>(
+  path: string,
+  options: { method?: "GET" | "POST"; body?: unknown } = {},
+): Promise<T> {
   const response = await fetch(`${baseUrl}${path}`, {
     method: options.method ?? "GET",
-    headers: { Authorization: `Bearer ${paystackSecretKey()}`, "Content-Type": "application/json" },
+    headers: {
+      Authorization: `Bearer ${paystackSecretKey()}`,
+      "Content-Type": "application/json",
+    },
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
     cache: "no-store",
     signal: AbortSignal.timeout(15000),
   });
-  const payload = await response.json().catch(() => null) as PaystackResponse<T> | null;
+  const payload = (await response
+    .json()
+    .catch(() => null)) as PaystackResponse<T> | null;
   if (!response.ok || !payload?.status) {
-    throw new ApiError(502, payload?.message ?? "Paystack could not complete the request", "PAYMENT_PROVIDER_ERROR");
+    throw new ApiError(
+      502,
+      payload?.message ?? "Paystack could not complete the request",
+      "PAYMENT_PROVIDER_ERROR",
+    );
   }
   return payload.data;
 }
@@ -49,10 +65,17 @@ export type PaystackTransaction = {
 };
 
 export function verifyTransaction(reference: string) {
-  return paystackRequest<PaystackTransaction>(`/transaction/verify/${encodeURIComponent(reference)}`);
+  return paystackRequest<PaystackTransaction>(
+    `/transaction/verify/${encodeURIComponent(reference)}`,
+  );
 }
 
-export type PaystackPlan = { plan_code: string; amount: number; currency: string; interval: string };
+export type PaystackPlan = {
+  plan_code: string;
+  amount: number;
+  currency: string;
+  interval: string;
+};
 
 export function fetchPlan(code: string) {
   return paystackRequest<PaystackPlan>(`/plan/${encodeURIComponent(code)}`);
@@ -67,23 +90,48 @@ export type PaystackSubscription = {
 };
 
 export function fetchSubscription(code: string) {
-  return paystackRequest<PaystackSubscription>(`/subscription/${encodeURIComponent(code)}`);
+  return paystackRequest<PaystackSubscription>(
+    `/subscription/${encodeURIComponent(code)}`,
+  );
 }
 
-export type PaystackBank = { name: string; code: string; active?: boolean; currency?: string };
+export type PaystackBank = {
+  name: string;
+  code: string;
+  active?: boolean;
+  currency?: string;
+};
 
 export async function listKenyanBanks() {
-  const banks = await paystackRequest<PaystackBank[]>("/bank?country=kenya&perPage=100");
-  return banks.filter((bank) => bank.active !== false && (!bank.currency || bank.currency === "KES"));
+  const banks = await paystackRequest<PaystackBank[]>(
+    "/bank?country=kenya&perPage=100",
+  );
+  return banks.filter(
+    (bank) =>
+      bank.active !== false && (!bank.currency || bank.currency === "KES"),
+  );
 }
 
 export function initializeTransaction(input: Record<string, unknown>) {
-  return paystackRequest<{ authorization_url: string; reference: string }>("/transaction/initialize", { method: "POST", body: input });
+  return paystackRequest<{ authorization_url: string; reference: string }>(
+    "/transaction/initialize",
+    { method: "POST", body: input },
+  );
 }
 
-export function createSubaccount(input: { business_name: string; bank_code: string; account_number: string; primary_contact_email: string }) {
-  return paystackRequest<{ subaccount_code: string; currency: string; active: boolean }>("/subaccount", {
-    method: "POST", body: {
+export function createSubaccount(input: {
+  business_name: string;
+  bank_code: string;
+  account_number: string;
+  primary_contact_email: string;
+}) {
+  return paystackRequest<{
+    subaccount_code: string;
+    currency: string;
+    active: boolean;
+  }>("/subaccount", {
+    method: "POST",
+    body: {
       business_name: input.business_name,
       settlement_bank: input.bank_code,
       account_number: input.account_number,
@@ -94,7 +142,11 @@ export function createSubaccount(input: { business_name: string; bank_code: stri
 }
 
 export function fetchSubaccount(code: string) {
-  return paystackRequest<{ subaccount_code: string; currency: string; active: boolean }>(`/subaccount/${encodeURIComponent(code)}`);
+  return paystackRequest<{
+    subaccount_code: string;
+    currency: string;
+    active: boolean;
+  }>(`/subaccount/${encodeURIComponent(code)}`);
 }
 
 /**
@@ -103,7 +155,9 @@ export function fetchSubaccount(code: string) {
 export class PaystackPaymentProvider implements PaymentProvider {
   readonly name = "PAYSTACK" as const;
 
-  async initiatePayment(input: InitiatePaymentInput): Promise<InitiatePaymentResult> {
+  async initiatePayment(
+    input: InitiatePaymentInput,
+  ): Promise<InitiatePaymentResult> {
     const initialized = await initializeTransaction({
       reference: input.reference,
       amount: Math.round(input.amount * 100),
@@ -121,7 +175,8 @@ export class PaystackPaymentProvider implements PaymentProvider {
 
   async verifyPayment(reference: string): Promise<VerifyPaymentResult> {
     const tx = await verifyTransaction(reference);
-    const status = tx.status === "success" ? "SUCCEEDED" : tx.status.toUpperCase();
+    const status =
+      tx.status === "success" ? "SUCCEEDED" : tx.status.toUpperCase();
     return {
       provider: this.name,
       reference: tx.reference,

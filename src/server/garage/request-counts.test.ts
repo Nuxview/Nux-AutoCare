@@ -11,7 +11,11 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({ auth: { getUser } }),
 }));
 vi.mock("@/lib/supabase/admin", () => ({
-  createAdminClient: () => ({ from, rpc, storage: { from: () => ({ upload }) } }),
+  createAdminClient: () => ({
+    from,
+    rpc,
+    storage: { from: () => ({ upload }) },
+  }),
 }));
 
 import { bookingAccess, garageScope, jobAccess } from "./scope";
@@ -25,12 +29,19 @@ import { POST as postRepairPhoto } from "@/app/api/repair-photos/route";
 import { PATCH as revokeStaffAccess } from "@/app/api/staff/route";
 
 const profile = {
-  id: "user-a", email: "owner@example.com", first_name: "Test",
-  last_name: "Owner", global_role: "CUSTOMER", is_active: true,
+  id: "user-a",
+  email: "owner@example.com",
+  first_name: "Test",
+  last_name: "Owner",
+  global_role: "CUSTOMER",
+  is_active: true,
 };
 let membership: {
-  id: string; franchise_id: string; shop_id: string | null;
-  role: string; franchise: { status: string };
+  id: string;
+  franchise_id: string;
+  shop_id: string | null;
+  role: string;
+  franchise: { status: string };
 } | null;
 let membershipError: { message: string } | null;
 let bookingCustomerId: string;
@@ -38,17 +49,29 @@ const recordId = "11111111-1111-4111-8111-111111111111";
 
 function query(table: string) {
   return {
-    select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(),
-    order: vi.fn().mockReturnThis(), limit: vi.fn().mockReturnThis(),
-    not: vi.fn().mockReturnThis(), in: vi.fn().mockReturnThis(),
-    gte: vi.fn().mockReturnThis(), lt: vi.fn().mockReturnThis(),
-    is: vi.fn().mockReturnThis(), gt: vi.fn().mockReturnThis(),
+    select: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    order: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockReturnThis(),
+    not: vi.fn().mockReturnThis(),
+    in: vi.fn().mockReturnThis(),
+    gte: vi.fn().mockReturnThis(),
+    lt: vi.fn().mockReturnThis(),
+    is: vi.fn().mockReturnThis(),
+    gt: vi.fn().mockReturnThis(),
     single: async () => ({ data: profile, error: null }),
     maybeSingle: async () => ({
-      data: table === "memberships" ? membership : {
-        id: "repair-a", franchise_id: "garage-a", shop_id: "branch-a",
-        customer_id: table === "bookings" ? bookingCustomerId : "customer-b", assigned_mechanic_id: "member-a",
-      },
+      data:
+        table === "memberships"
+          ? membership
+          : {
+              id: "repair-a",
+              franchise_id: "garage-a",
+              shop_id: "branch-a",
+              customer_id:
+                table === "bookings" ? bookingCustomerId : "customer-b",
+              assigned_mechanic_id: "member-a",
+            },
       error: table === "memberships" ? membershipError : null,
     }),
     then(resolve: (value: unknown) => unknown) {
@@ -64,14 +87,20 @@ function query(table: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   membership = {
-    id: "member-a", franchise_id: "garage-a", shop_id: "branch-a",
-    role: "SHOP_MANAGER", franchise: { status: "ACTIVE" },
+    id: "member-a",
+    franchise_id: "garage-a",
+    shop_id: "branch-a",
+    role: "SHOP_MANAGER",
+    franchise: { status: "ACTIVE" },
   };
   membershipError = null;
   bookingCustomerId = "customer-b";
   rpc.mockResolvedValue({ error: null });
   upload.mockResolvedValue({ error: null });
-  getUser.mockResolvedValue({ data: { user: { id: profile.id } }, error: null });
+  getUser.mockResolvedValue({
+    data: { user: { id: profile.id } },
+    error: null,
+  });
   from.mockImplementation(query);
 });
 
@@ -81,11 +110,19 @@ function tableQuery(table: string) {
 }
 
 const paths = [
-  { name: "garage scope", run: () => garageScope(["SHOP_MANAGER"]), entity: null },
+  {
+    name: "garage scope",
+    run: () => garageScope(["SHOP_MANAGER"]),
+    entity: null,
+  },
   { name: "dashboard", run: dashboard, entity: null },
   { name: "invoices", run: invoices, entity: null },
   { name: "jobs", run: listVisibleJobs, entity: null },
-  { name: "booking access", run: () => bookingAccess("repair-a"), entity: "bookings" },
+  {
+    name: "booking access",
+    run: () => bookingAccess("repair-a"),
+    entity: "bookings",
+  },
   { name: "job access", run: () => jobAccess("repair-a"), entity: "jobs" },
 ];
 
@@ -94,30 +131,39 @@ describe.each(paths)("$name request budget", ({ run, entity }) => {
     const result = await run();
     if (result instanceof Response) expect(result.status).toBe(200);
     expect(getUser).toHaveBeenCalledTimes(1);
-    expect(from.mock.calls.filter(([table]) => table === "profiles")).toHaveLength(1);
-    expect(from.mock.calls.filter(([table]) => table === "memberships")).toHaveLength(1);
+    expect(
+      from.mock.calls.filter(([table]) => table === "profiles"),
+    ).toHaveLength(1);
+    expect(
+      from.mock.calls.filter(([table]) => table === "memberships"),
+    ).toHaveLength(1);
     const members = tableQuery("memberships");
     expect(members.eq).toHaveBeenCalledWith("user_id", profile.id);
     expect(members.eq).toHaveBeenCalledWith("is_active", true);
     expect(members.select.mock.calls[0][0]).toContain("franchise:franchises(");
   });
 
-  it.each(["SUSPENDED", "CANCELLED"])("still rejects %s garages", async status => {
-    membership!.franchise.status = status;
-    try {
-      const response = await run();
-      expect(response).toBeInstanceOf(Response);
-      expect((response as Response).status).toBe(403);
-      expect(await (response as Response).json()).toMatchObject({
-        error: { code: "TENANT_SUSPENDED" },
-      });
-    } catch (error) {
-      expect(error).toMatchObject({ status: 403, code: "TENANT_SUSPENDED" });
-    }
-    expect(from.mock.calls.map(([table]) => table)).toEqual(
-      entity ? ["profiles", entity, "memberships"] : ["profiles", "memberships"],
-    );
-  });
+  it.each(["SUSPENDED", "CANCELLED"])(
+    "still rejects %s garages",
+    async (status) => {
+      membership!.franchise.status = status;
+      try {
+        const response = await run();
+        expect(response).toBeInstanceOf(Response);
+        expect((response as Response).status).toBe(403);
+        expect(await (response as Response).json()).toMatchObject({
+          error: { code: "TENANT_SUSPENDED" },
+        });
+      } catch (error) {
+        expect(error).toMatchObject({ status: 403, code: "TENANT_SUSPENDED" });
+      }
+      expect(from.mock.calls.map(([table]) => table)).toEqual(
+        entity
+          ? ["profiles", entity, "memberships"]
+          : ["profiles", "memberships"],
+      );
+    },
+  );
 
   it("does not read workshop data for an unauthenticated request", async () => {
     getUser.mockResolvedValue({ data: { user: null }, error: null });
@@ -137,40 +183,74 @@ describe("garage access boundaries", () => {
     membership!.franchise.status = "PAST_DUE";
     rpc.mockResolvedValue({ error: { message: "TENANT_READ_ONLY" } });
     expect((await dashboard()).status).toBe(200);
-    await expect(jobAccess("repair-a")).resolves.toMatchObject({ job: { id: "repair-a" } });
+    await expect(jobAccess("repair-a")).resolves.toMatchObject({
+      job: { id: "repair-a" },
+    });
     expect(rpc).not.toHaveBeenCalled();
     from.mockClear();
 
-    await expect(jobAccess("repair-a", true)).rejects.toMatchObject({ message: "TENANT_READ_ONLY" });
-    expect(rpc).toHaveBeenCalledWith("assert_tenant_writable", { p_franchise_id: "garage-a" });
+    await expect(jobAccess("repair-a", true)).rejects.toMatchObject({
+      message: "TENANT_READ_ONLY",
+    });
+    expect(rpc).toHaveBeenCalledWith("assert_tenant_writable", {
+      p_franchise_id: "garage-a",
+    });
     rpc.mockClear();
     membership!.shop_id = recordId;
     const insert = vi.fn().mockReturnValue({
       select: () => ({
-        single: async () => ({ data: null, error: { message: "TENANT_READ_ONLY" } }),
+        single: async () => ({
+          data: null,
+          error: { message: "TENANT_READ_ONLY" },
+        }),
       }),
     });
     from.mockImplementation((table) =>
-      table === "inventory_items" ? { insert } : query(table));
-    const response = await addStock(new Request("http://localhost/api/inventory", {
-      method: "POST",
-      body: JSON.stringify({ shopId: recordId, sku: "PLUG", name: "Spark plug", quantityOnHand: 4, reorderLevel: 1, unitCost: 200, sellingPrice: 500 }),
-    }));
+      table === "inventory_items" ? { insert } : query(table),
+    );
+    const response = await addStock(
+      new Request("http://localhost/api/inventory", {
+        method: "POST",
+        body: JSON.stringify({
+          shopId: recordId,
+          sku: "PLUG",
+          name: "Spark plug",
+          quantityOnHand: 4,
+          reorderLevel: 1,
+          unitCost: 200,
+          sellingPrice: 500,
+        }),
+      }),
+    );
     expect(response.status).toBe(403);
-    expect(await response.json()).toMatchObject({ error: { code: "TENANT_READ_ONLY" } });
-    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ franchise_id: "garage-a", shop_id: recordId }));
+    expect(await response.json()).toMatchObject({
+      error: { code: "TENANT_READ_ONLY" },
+    });
+    expect(insert).toHaveBeenCalledWith(
+      expect.objectContaining({ franchise_id: "garage-a", shop_id: recordId }),
+    );
     expect(rpc).not.toHaveBeenCalled();
   });
 
   it("allows only the customer to upload a repair photo when the garage is read-only", async () => {
     rpc.mockResolvedValue({ error: { message: "TENANT_READ_ONLY" } });
     const insert = vi.fn().mockReturnValue(query("repair_photos"));
-    from.mockImplementation((table) => table === "repair_photos" ? { insert } : query(table));
+    from.mockImplementation((table) =>
+      table === "repair_photos" ? { insert } : query(table),
+    );
     const request = () => {
       const form = new FormData();
       form.set("bookingId", recordId);
-      form.set("file", new File([new Uint8Array([255, 216, 255])], "repair.jpg", { type: "image/jpeg" }));
-      return new Request("http://localhost/api/repair-photos", { method: "POST", body: form });
+      form.set(
+        "file",
+        new File([new Uint8Array([255, 216, 255])], "repair.jpg", {
+          type: "image/jpeg",
+        }),
+      );
+      return new Request("http://localhost/api/repair-photos", {
+        method: "POST",
+        body: form,
+      });
     };
     expect((await postRepairPhoto(request())).status).toBe(403);
     expect(upload).not.toHaveBeenCalled();
@@ -179,7 +259,9 @@ describe("garage access boundaries", () => {
     rpc.mockClear();
     expect((await postRepairPhoto(request())).status).toBe(201);
     expect(upload).toHaveBeenCalledOnce();
-    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ uploaded_by: profile.id }));
+    expect(insert).toHaveBeenCalledWith(
+      expect.objectContaining({ uploaded_by: profile.id }),
+    );
     expect(rpc).not.toHaveBeenCalled();
   });
 
@@ -191,14 +273,21 @@ describe("garage access boundaries", () => {
     from.mockImplementation((table) => ({
       ...query(table),
       update: (fields: Record<string, unknown>) => {
-        expect(fields).toEqual(table === "memberships" ? { is_active: false } : { revoked_at: expect.any(String) });
+        expect(fields).toEqual(
+          table === "memberships"
+            ? { is_active: false }
+            : { revoked_at: expect.any(String) },
+        );
         return update(table);
       },
     }));
     for (const kind of ["member", "invitation"]) {
-      const response = await revokeStaffAccess(new Request("http://localhost/api/staff", {
-        method: "PATCH", body: JSON.stringify({ kind, id: recordId }),
-      }));
+      const response = await revokeStaffAccess(
+        new Request("http://localhost/api/staff", {
+          method: "PATCH",
+          body: JSON.stringify({ kind, id: recordId }),
+        }),
+      );
       expect(response.status).toBe(200);
     }
     expect(update.mock.calls).toEqual([["memberships"], ["staff_invitations"]]);
@@ -218,38 +307,73 @@ describe("garage access boundaries", () => {
       metrics: { openJobs: 0, todayBookings: 0 },
     });
     const timing = response.headers.get("Server-Timing")!;
-    for (const span of ["auth", "profile", "memberships", "open_jobs", "today_bookings", "receivables", "recent_jobs", "pending_bookings", "total"]) {
+    for (const span of [
+      "auth",
+      "profile",
+      "memberships",
+      "open_jobs",
+      "today_bookings",
+      "receivables",
+      "recent_jobs",
+      "pending_bookings",
+      "total",
+    ]) {
       expect(timing).toMatch(new RegExp(`(?:^|, )${span};dur=\\d+\\.\\d`));
     }
     expect(timing).not.toContain(profile.id);
     expect(timing).not.toContain(profile.email);
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
     expect(getUser).toHaveBeenCalledTimes(1);
-    expect(from.mock.calls.filter(([table]) => table === "memberships")).toHaveLength(1);
+    expect(
+      from.mock.calls.filter(([table]) => table === "memberships"),
+    ).toHaveLength(1);
   });
 
   it.each([
-    ["2026-12-31T20:59:59.999Z", "2026-12-30T21:00:00.000Z", "2026-12-31T21:00:00.000Z"],
-    ["2026-12-31T21:00:00.000Z", "2026-12-31T21:00:00.000Z", "2027-01-01T21:00:00.000Z"],
-  ])("counts today's bookings between EAT midnights at %s", async (now, start, end) => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    try {
-      vi.setSystemTime(new Date(now));
-      const response = await dashboard();
-      expect(response.status).toBe(200);
-      const bookings = tableQuery("bookings");
-      expect(bookings.gte).toHaveBeenCalledExactlyOnceWith("scheduled_at", start);
-      expect(bookings.lt).toHaveBeenCalledExactlyOnceWith("scheduled_at", end);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
+    [
+      "2026-12-31T20:59:59.999Z",
+      "2026-12-30T21:00:00.000Z",
+      "2026-12-31T21:00:00.000Z",
+    ],
+    [
+      "2026-12-31T21:00:00.000Z",
+      "2026-12-31T21:00:00.000Z",
+      "2027-01-01T21:00:00.000Z",
+    ],
+  ])(
+    "counts today's bookings between EAT midnights at %s",
+    async (now, start, end) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      try {
+        vi.setSystemTime(new Date(now));
+        const response = await dashboard();
+        expect(response.status).toBe(200);
+        const bookings = tableQuery("bookings");
+        expect(bookings.gte).toHaveBeenCalledExactlyOnceWith(
+          "scheduled_at",
+          start,
+        );
+        expect(bookings.lt).toHaveBeenCalledExactlyOnceWith(
+          "scheduled_at",
+          end,
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
 
   it("keeps the lighter workspace endpoint for direct visits to other pages", async () => {
     const response = await workspace();
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ user: { id: profile.id }, memberships: [{ role: "SHOP_MANAGER" }] });
-    expect(from.mock.calls.map(([table]) => table)).toEqual(["profiles", "memberships"]);
+    expect(await response.json()).toMatchObject({
+      user: { id: profile.id },
+      memberships: [{ role: "SHOP_MANAGER" }],
+    });
+    expect(from.mock.calls.map(([table]) => table)).toEqual([
+      "profiles",
+      "memberships",
+    ]);
     expect(response.headers.get("Server-Timing")).toContain("memberships;dur=");
   });
 
@@ -262,16 +386,28 @@ describe("garage access boundaries", () => {
     expect(body.error.code).toBe("TENANT_SUSPENDED");
     expect(body.metrics).toBeUndefined();
     expect(response.headers.get("Server-Timing")).toContain("memberships;dur=");
-    expect(from.mock.calls.map(([table]) => table)).toEqual(["profiles", "memberships"]);
+    expect(from.mock.calls.map(([table]) => table)).toEqual([
+      "profiles",
+      "memberships",
+    ]);
   });
 
   it("provides the customer bootstrap and times the invitation check and customer queries", async () => {
     membership = null;
     const response = await dashboard();
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ kind: "customer", workspace: { memberships: [], hasPendingInvitation: false } });
-    expect(tableQuery("vehicles").eq).toHaveBeenCalledWith("owner_id", profile.id);
-    expect(tableQuery("jobs").eq).toHaveBeenCalledWith("customer_id", profile.id);
+    expect(await response.json()).toMatchObject({
+      kind: "customer",
+      workspace: { memberships: [], hasPendingInvitation: false },
+    });
+    expect(tableQuery("vehicles").eq).toHaveBeenCalledWith(
+      "owner_id",
+      profile.id,
+    );
+    expect(tableQuery("jobs").eq).toHaveBeenCalledWith(
+      "customer_id",
+      profile.id,
+    );
     expect(response.headers.get("Server-Timing")).toContain("invitations;dur=");
     expect(response.headers.get("Server-Timing")).toContain("vehicles;dur=");
   });
@@ -281,7 +417,9 @@ describe("garage access boundaries", () => {
     const response = await dashboard();
     expect(response.status).toBe(401);
     expect((await response.json()).workspace).toBeUndefined();
-    expect(response.headers.get("Server-Timing")).toMatch(/^auth;dur=\d+\.\d, total;dur=/);
+    expect(response.headers.get("Server-Timing")).toMatch(
+      /^auth;dur=\d+\.\d, total;dur=/,
+    );
     expect(from).not.toHaveBeenCalled();
   });
 
@@ -296,10 +434,14 @@ describe("garage access boundaries", () => {
 
   it("keeps branch scope and rejects a role without the requested capability", async () => {
     expect(await garageScope(["SHOP_MANAGER"])).toMatchObject({
-      franchiseId: "garage-a", shopId: "branch-a", role: "SHOP_MANAGER",
+      franchiseId: "garage-a",
+      shopId: "branch-a",
+      role: "SHOP_MANAGER",
     });
     membership!.role = "MECHANIC";
-    await expect(garageScope(["SHOP_MANAGER"])).rejects.toMatchObject({ status: 403 });
+    await expect(garageScope(["SHOP_MANAGER"])).rejects.toMatchObject({
+      status: 403,
+    });
   });
 
   it("rejects missing memberships and lookup failures", async () => {
@@ -320,8 +462,14 @@ describe("garage access boundaries", () => {
 
   it("keeps invoice reads restricted to their branch and capability", async () => {
     expect((await invoices()).status).toBe(200);
-    expect(tableQuery("invoices").eq).toHaveBeenCalledWith("franchise_id", "garage-a");
-    expect(tableQuery("invoices").eq).toHaveBeenCalledWith("shop_id", "branch-a");
+    expect(tableQuery("invoices").eq).toHaveBeenCalledWith(
+      "franchise_id",
+      "garage-a",
+    );
+    expect(tableQuery("invoices").eq).toHaveBeenCalledWith(
+      "shop_id",
+      "branch-a",
+    );
     from.mockClear();
     membership!.role = "MECHANIC";
     expect((await invoices()).status).toBe(403);
@@ -331,9 +479,15 @@ describe("garage access boundaries", () => {
   it("keeps customer reads restricted to their own jobs and invoices", async () => {
     membership = null;
     await listVisibleJobs();
-    expect(tableQuery("jobs").eq).toHaveBeenCalledWith("customer_id", profile.id);
+    expect(tableQuery("jobs").eq).toHaveBeenCalledWith(
+      "customer_id",
+      profile.id,
+    );
     expect((await invoices()).status).toBe(200);
-    expect(tableQuery("invoices").eq).toHaveBeenCalledWith("customer_id", profile.id);
+    expect(tableQuery("invoices").eq).toHaveBeenCalledWith(
+      "customer_id",
+      profile.id,
+    );
   });
 
   it("checks tenant status for object and array relationship responses", () => {

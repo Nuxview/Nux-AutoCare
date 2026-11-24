@@ -26,7 +26,8 @@ export async function workshopRpc(
     const messages: Record<string, string> = {
       FORBIDDEN: "You do not have permission for this action.",
       NOT_FOUND: "Repair job not found",
-      INVALID_STAGE_TRANSITION: "This repair cannot move to the requested stage.",
+      INVALID_STAGE_TRANSITION:
+        "This repair cannot move to the requested stage.",
       TASKS_INCOMPLETE: "Complete every repair step first",
       APPROVAL_REQUIRED:
         "The customer must approve the latest quote before work continues.",

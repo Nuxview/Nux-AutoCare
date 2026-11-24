@@ -62,11 +62,15 @@ export function InvoicePayment({
         try {
           const refreshed = await fetchOptions();
           setOptions(refreshed);
-          setMessage(refreshed.pending
-            ? "Another payment is open. Check its status below."
-            : "Payment options changed. Review them before trying again.");
+          setMessage(
+            refreshed.pending
+              ? "Another payment is open. Check its status below."
+              : "Payment options changed. Review them before trying again.",
+          );
         } catch {
-          setMessage("An existing payment was found, but payment options could not be refreshed.");
+          setMessage(
+            "An existing payment was found, but payment options could not be refreshed.",
+          );
         }
         return;
       }

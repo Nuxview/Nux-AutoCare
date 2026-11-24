@@ -2,13 +2,15 @@ import { createElement, type EffectCallback } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
+type ReactModule = typeof import("react");
+
 const fixture = vi.hoisted(() => ({
   effects: [] as EffectCallback[],
   state: vi.fn(),
   request: vi.fn(),
 }));
 vi.mock("react", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("react")>()),
+  ...(await importOriginal<ReactModule>()),
   useEffect: (effect: EffectCallback) => fixture.effects.push(effect),
   useState: (initial: unknown) => [initial, fixture.state],
 }));
@@ -59,7 +61,8 @@ it.each([
     );
     for (const effect of fixture.effects) effect();
     await vi.waitFor(() => expect(fixture.state).toHaveBeenCalledWith(message));
-    expect(fixture.request.mock.calls.filter(([url]) => url === summaryUrl))
-      .toHaveLength(summaryRequests);
+    expect(
+      fixture.request.mock.calls.filter(([url]) => url === summaryUrl),
+    ).toHaveLength(summaryRequests);
   },
 );

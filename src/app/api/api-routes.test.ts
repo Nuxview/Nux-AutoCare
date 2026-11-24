@@ -104,7 +104,11 @@ describe("PART B: Real API route integration tests", () => {
                     scheduled_at: new Date(Date.now() + 86400000).toISOString(),
                     customer_notes: "Brake inspection",
                     shop: { name: "Downtown Garage" },
-                    vehicle: { registration: "KDA 123A", make: "Toyota", model: "Vitz" },
+                    vehicle: {
+                      registration: "KDA 123A",
+                      make: "Toyota",
+                      model: "Vitz",
+                    },
                     service: null,
                   },
                   error: null,
@@ -161,23 +165,34 @@ describe("PART B: Real API route integration tests", () => {
   });
 
   describe("Route 2: PATCH /api/jobs/status (Update job status)", () => {
-    it.each(["signed out", "disabled"])("rejects a %s account before the status RPC", async (account) => {
-      configureAuthenticatedUser();
-      if (account === "signed out") {
-        mockGetUser.mockResolvedValue({ data: { user: null }, error: null });
-      }
-      mockAdminFrom.mockImplementation(() => ({
-        select: () => ({ eq: () => ({ single: async () => ({
-          data: { id: TEST_USER_ID, is_active: false }, error: null,
-        }) }) }),
-      }));
-      const response = await updateJobStatusRoute(new Request("http://localhost:3000/api/jobs/status", {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jobId: TEST_JOB_ID, status: "READY" }),
-      }));
-      expect(response.status).toBe(401);
-      expect(mockAdminRpc).not.toHaveBeenCalled();
-    });
+    it.each(["signed out", "disabled"])(
+      "rejects a %s account before the status RPC",
+      async (account) => {
+        configureAuthenticatedUser();
+        if (account === "signed out") {
+          mockGetUser.mockResolvedValue({ data: { user: null }, error: null });
+        }
+        mockAdminFrom.mockImplementation(() => ({
+          select: () => ({
+            eq: () => ({
+              single: async () => ({
+                data: { id: TEST_USER_ID, is_active: false },
+                error: null,
+              }),
+            }),
+          }),
+        }));
+        const response = await updateJobStatusRoute(
+          new Request("http://localhost:3000/api/jobs/status", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ jobId: TEST_JOB_ID, status: "READY" }),
+          }),
+        );
+        expect(response.status).toBe(401);
+        expect(mockAdminRpc).not.toHaveBeenCalled();
+      },
+    );
 
     it("handles valid status update and returns 200 with ok flag", async () => {
       configureAuthenticatedUser();
@@ -221,11 +236,14 @@ describe("PART B: Real API route integration tests", () => {
 
       const body = await response.json();
       expect(body).toEqual({ ok: true });
-      expect(mockAdminRpc).toHaveBeenCalledExactlyOnceWith("transition_repair_job", {
-        p_actor_id: TEST_USER_ID,
-        p_job_id: TEST_JOB_ID,
-        p_status: "IN_PROGRESS",
-      });
+      expect(mockAdminRpc).toHaveBeenCalledExactlyOnceWith(
+        "transition_repair_job",
+        {
+          p_actor_id: TEST_USER_ID,
+          p_job_id: TEST_JOB_ID,
+          p_status: "IN_PROGRESS",
+        },
+      );
     });
 
     it("rejects invalid status payload with HTTP 400 and validation error", async () => {

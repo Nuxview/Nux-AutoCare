@@ -1,6 +1,13 @@
-import { createElement, useState, type ComponentType, type EffectCallback } from "react";
+import {
+  createElement,
+  useState,
+  type ComponentType,
+  type EffectCallback,
+} from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+type ReactModule = typeof import("react");
 
 const { effects } = vi.hoisted(() => ({ effects: [] as EffectCallback[] }));
 vi.mock("next/navigation", () => ({
@@ -9,7 +16,7 @@ vi.mock("next/navigation", () => ({
 }));
 // Run mount effects explicitly to count page requests without a browser or live backend.
 vi.mock("react", async (importOriginal) => {
-  const react = await importOriginal<typeof import("react")>();
+  const react = await importOriginal<ReactModule>();
   return {
     ...react,
     useState: vi.fn(react.useState),
@@ -92,7 +99,9 @@ function mount(Page: ComponentType, workspace: Workspace) {
 describe("pages reuse the dashboard workspace", () => {
   it("keeps workspace links and the sign-out button named with compact labels", () => {
     vi.mocked(useState).mockReturnValueOnce([false, vi.fn()]);
-    const markup = renderToStaticMarkup(createElement(DashboardShell, null, null));
+    const markup = renderToStaticMarkup(
+      createElement(DashboardShell, null, null),
+    );
     expect(markup).toContain('aria-label="AutoCare"');
     expect(markup).toContain('aria-label="My overview" aria-current="page"');
     expect(markup).toContain('aria-label="Garage visits"');

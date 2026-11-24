@@ -1,8 +1,10 @@
 import { Children, isValidElement, useState, type ReactNode } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 
+type ReactModule = typeof import("react");
+
 vi.mock("react", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("react")>()),
+  ...(await importOriginal<ReactModule>()),
   useState: vi.fn(),
 }));
 vi.mock("@/lib/client-cache", () => ({ request: vi.fn() }));
@@ -11,7 +13,11 @@ import { request } from "@/lib/client-cache";
 import { InvoicePayment } from "./invoice-payment";
 
 const available = {
-  test: false, stripe: false, mpesa: false, paystack: true, pending: null,
+  test: false,
+  stripe: false,
+  mpesa: false,
+  paystack: true,
+  pending: null,
 };
 const openPayment = {
   ...available,
@@ -19,10 +25,7 @@ const openPayment = {
 };
 const optionsUrl = "/api/payments/options?invoiceId=invoice";
 
-function findButton(
-  node: ReactNode,
-  label: string,
-): (() => void) | undefined {
+function findButton(node: ReactNode, label: string): (() => void) | undefined {
   if (!isValidElement<{ children?: ReactNode; onClick?: () => void }>(node))
     return;
   if (node.type === "button" && node.props.children === label)
@@ -61,7 +64,9 @@ it("refreshes a checkout conflict and offers the existing payment status", async
   const pay = findButton(panel, "Pay with Paystack");
   expect(pay).toBeDefined();
   pay?.();
-  await vi.waitFor(() => expect(setOptions).toHaveBeenLastCalledWith(openPayment));
+  await vi.waitFor(() =>
+    expect(setOptions).toHaveBeenLastCalledWith(openPayment),
+  );
   expect(request).toHaveBeenNthCalledWith(2, optionsUrl);
   expect(request).toHaveBeenCalledTimes(2);
   const refreshed = render(openPayment).panel;
@@ -76,7 +81,8 @@ it("lets the customer retry loading options if conflict recovery fails", async (
     .mockResolvedValueOnce(Response.json(openPayment));
   const { panel, setOptions, setMessage } = render(available);
   findButton(panel, "Pay with Paystack")?.();
-  const message = "An existing payment was found, but payment options could not be refreshed.";
+  const message =
+    "An existing payment was found, but payment options could not be refreshed.";
   await vi.waitFor(() => expect(setMessage).toHaveBeenLastCalledWith(message));
   expect(setOptions.mock.calls).toEqual([[null]]);
   const retry = render(null, message);
@@ -84,6 +90,7 @@ it("lets the customer retry loading options if conflict recovery fails", async (
   expect(reload).toBeDefined();
   reload?.();
   await vi.waitFor(() =>
-    expect(retry.setOptions).toHaveBeenLastCalledWith(openPayment));
+    expect(retry.setOptions).toHaveBeenLastCalledWith(openPayment),
+  );
   expect(request).toHaveBeenNthCalledWith(3, optionsUrl);
 });
