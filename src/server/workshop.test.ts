@@ -275,9 +275,79 @@ describe("workshop database workflows", () => {
     expect(await scalar("select settle_verified_invoice_payment($1,'STRIPE','cs_test_read_only',100000,'KES',true)", [payment.reference])).toBe(true);
     expect(await scalar("select amount_paid from invoices where id=$1", [id(900)])).toBe("1000.00");
   });
-  it("denies browser roles access to the entitlement check", async () => {
-    for (const role of ["anon", "authenticated"]) {
-      expect(await scalar("select has_function_privilege($1,'public.assert_tenant_writable(uuid)','execute')", [role])).toBe(false);
+  it("guards the actual writes after an earlier entitlement check passes", async () => {
+    await db.exec("set local role service_role");
+    const invitation = "insert into staff_invitations(id,franchise_id,email,role,invited_by) values($1,$2,'invite@example.com','FRANCHISE_ADMIN',$3)";
+    await db.query(invitation, [id(91), id(10), id(1)]);
+    await db.query("insert into repair_tasks(id,job_id,title) values($1,$2,'Labour')", [id(92), id(50)]);
+    await db.query("select assert_tenant_writable($1)", [id(10)]);
+    await db.query("update franchises set status='PAST_DUE' where id=$1", [id(10)]);
+
+    const photo = "insert into repair_photos(booking_id,uploaded_by,storage_path) values($1,$2,'photo.jpg')";
+    const guardedWrites: Array<[string, unknown[]]> = [
+      ["insert into inventory_items(franchise_id,shop_id,sku,name,selling_price) values($1,$2,'NEW','New stock',50)", [id(10), id(20)]],
+      ["update inventory_items set quantity_on_hand=9 where id=$1", [id(60)]],
+      [invitation, [id(93), id(10), id(1)]],
+      ["insert into workshop_bays(shop_id,name) values($1,'New bay')", [id(20)]],
+      ["update shops set name='Renamed branch' where id=$1", [id(20)]],
+      ["update franchises set logo_url='https://example.com/logo.jpg' where id=$1", [id(10)]],
+      ["select save_garage_settings($1,$2,'Renamed branch',false,'{}','Renamed garage')", [id(10), id(20)]],
+      ["insert into repair_tasks(job_id,title) values($1,'Second step')", [id(50)]],
+      ["select update_repair_task($1,$2,'PENDING','Changed note')", [id(92), id(50)]],
+      [photo, [id(40), id(1)]],
+    ];
+    for (const [sql, args] of guardedWrites)
+      await fails(sql, args, "TENANT_READ_ONLY");
+
+    await db.query(photo, [id(40), id(2)]);
+    await db.query("update staff_invitations set revoked_at=now() where id=$1", [id(91)]);
+    expect(await scalar("select uploaded_by from repair_photos where booking_id=$1", [id(40)])).toBe(id(2));
+    expect(await scalar("select revoked_at is not null from staff_invitations where id=$1", [id(91)])).toBe(true);
+
+    await db.query("update franchises set status='ACTIVE' where id=$1", [id(10)]);
+    await db.query(
+      "select save_garage_settings($1,$2,'Renamed branch',false,(select opening_hours from shops where id=$2),'Renamed garage')",
+      [id(10), id(20)],
+    );
+    expect(await scalar("select name from shops where id=$1", [id(20)])).toBe("Renamed branch");
+    expect(await scalar("select name from franchises where id=$1", [id(10)])).toBe("Renamed garage");
+  });
+  it("rolls back the task when the job update fails and honors the locked stage on retry", async () => {
+    await approve(await quote());
+    await db.query("insert into repair_tasks(id,job_id,title,note) values($1,$2,'Labour','Keep note')", [id(92), id(50)]);
+    await db.exec(`
+      create function pg_temp.reject_job_touch() returns trigger language plpgsql as $$
+      begin raise exception 'INJECTED_JOB_FAILURE'; end $$;
+      create trigger reject_job_touch before update on jobs
+        for each row execute function pg_temp.reject_job_touch();
+    `);
+
+    const start = "select update_repair_task($1,$2,'IN_PROGRESS',null)";
+    const args = [id(92), id(50)];
+    await fails(start, args, "INJECTED_JOB_FAILURE");
+    expect(await scalar("select status from repair_tasks where id=$1", [id(92)])).toBe("PENDING");
+    await db.exec("drop trigger reject_job_touch on jobs");
+
+    await db.exec("set local role service_role");
+    expect(await scalar(start, args)).toMatchObject({ status: "IN_PROGRESS", note: "Keep note" });
+    expect(await scalar("select status from jobs where id=$1", [id(50)])).toBe("IN_PROGRESS");
+    await db.query("select update_repair_task($1,$2,'COMPLETED','')", args);
+    await db.query("select transition_repair_job($1,$2,'READY')", [id(1), id(50)]);
+    await fails(start, args, "JOB_READY");
+    await db.query("select transition_repair_job($1,$2,'COMPLETED')", [id(1), id(50)]);
+    await fails(start, args, "JOB_CLOSED");
+    expect(await scalar("select note from repair_tasks where id=$1", [id(92)])).toBe("");
+  });
+  it("limits the entitlement and protected-write RPCs to the service role", async () => {
+    for (const signature of [
+      "public.assert_tenant_writable(uuid)",
+      "public.save_garage_settings(uuid,uuid,text,boolean,jsonb,text)",
+      "public.update_repair_task(uuid,uuid,text,text)",
+    ]) {
+      const check = "select has_function_privilege($1,$2,'execute')";
+      expect(await scalar(check, ["anon", signature])).toBe(false);
+      expect(await scalar(check, ["authenticated", signature])).toBe(false);
+      expect(await scalar(check, ["service_role", signature])).toBe(true);
     }
   });
   it("keeps operational table access server-only for every CRUD operation", async () => {

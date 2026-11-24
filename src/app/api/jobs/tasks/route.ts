@@ -76,29 +76,16 @@ export async function PATCH(request: Request) {
     if (lookupError) throw lookupError;
     if (!existing)
       throw new ApiError(404, "Repair step not found", "NOT_FOUND");
-    const { job } = await jobAccess(existing.job_id, true);
-    const { data, error } = await admin
-      .from("repair_tasks")
-      .update({
-        status: input.status,
-        ...(input.note !== undefined ? { note: input.note } : {}),
-      })
-      .eq("id", input.taskId)
-      .select()
-      .single();
+    await jobAccess(existing.job_id, true);
+    const { data, error } = await admin.rpc("update_repair_task", {
+      p_task_id: input.taskId,
+      p_job_id: existing.job_id,
+      p_status: input.status,
+      p_note: input.note ?? null,
+    });
+    if (error?.message === "TASK_NOT_FOUND")
+      throw new ApiError(404, "Repair step not found", "NOT_FOUND");
     if (error) throw error;
-    const { error: touchError } = await admin
-      .from("jobs")
-      .update({
-        updated_at: new Date().toISOString(),
-        ...(input.status === "IN_PROGRESS" &&
-        ["OPEN", "APPROVED"].includes(job.status)
-          ? { status: "IN_PROGRESS" }
-          : {}),
-      })
-      .eq("id", existing.job_id)
-      .eq("status", job.status);
-    if (touchError) throw touchError;
     return Response.json({ task: camelize(data) });
   } catch (error) {
     return jsonError(error);

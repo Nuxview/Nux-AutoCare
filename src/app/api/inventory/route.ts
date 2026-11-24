@@ -2,7 +2,6 @@ import { z } from "zod";
 import { ApiError, jsonError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { camelize } from "@/lib/supabase/format";
-import { assertTenantWritable } from "@/server/auth/context";
 import { garageScope } from "@/server/garage/scope";
 
 const itemSchema = z.object({
@@ -53,7 +52,6 @@ export async function POST(request: Request) {
       .maybeSingle();
     if (shopError) throw shopError;
     if (!shop) throw new ApiError(404, "Shop not found", "NOT_FOUND");
-    await assertTenantWritable(scope.franchiseId);
     const { data, error } = await admin
       .from("inventory_items")
       .insert({
@@ -94,7 +92,6 @@ export async function PATCH(request: Request) {
         "Moving stock between shops is not supported",
         "INVALID_SHOP",
       );
-    await assertTenantWritable(scope.franchiseId);
     const { error } = await admin
       .from("inventory_items")
       .update({
@@ -111,7 +108,9 @@ export async function PATCH(request: Request) {
           ? { selling_price: input.sellingPrice }
           : {}),
       })
-      .eq("id", input.id);
+      .eq("id", input.id)
+      .eq("franchise_id", scope.franchiseId)
+      .eq("shop_id", existing.shop_id);
     if (error) throw error;
     return Response.json({ ok: true });
   } catch (error) {

@@ -33,8 +33,7 @@ Isolated regression tests check request counts and access boundaries. Production
 Local follow-up: the public `/api/garages` endpoint took 4.37 seconds on its first request and 0.34–0.37 seconds on warm requests. Next.js logged a 1,540 ms initial Supabase fetch and 321–329 ms warm fetches. These measurements do not establish signed-in endpoint latency; capture the timing block for any signed-in request that remains slow.
 
 ## 3. Unused files
-The repo has some existing files that are no longer in use like the dockerfiles since this app is being deployed on Vercel.
-There are also some legacy files like the prisma migrations but we can leave those for now after confirmation from the lead.
+Keep the legacy Prisma migrations pending confirmation from the lead.
 
 ## 4. Conflicting docs and code base
 A close look at the both the code base and documentation shows a clear misalignment between the two.

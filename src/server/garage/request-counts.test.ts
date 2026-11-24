@@ -142,15 +142,24 @@ describe("garage access boundaries", () => {
     from.mockClear();
 
     await expect(jobAccess("repair-a", true)).rejects.toMatchObject({ message: "TENANT_READ_ONLY" });
+    expect(rpc).toHaveBeenCalledWith("assert_tenant_writable", { p_franchise_id: "garage-a" });
+    rpc.mockClear();
     membership!.shop_id = recordId;
+    const insert = vi.fn().mockReturnValue({
+      select: () => ({
+        single: async () => ({ data: null, error: { message: "TENANT_READ_ONLY" } }),
+      }),
+    });
+    from.mockImplementation((table) =>
+      table === "inventory_items" ? { insert } : query(table));
     const response = await addStock(new Request("http://localhost/api/inventory", {
       method: "POST",
       body: JSON.stringify({ shopId: recordId, sku: "PLUG", name: "Spark plug", quantityOnHand: 4, reorderLevel: 1, unitCost: 200, sellingPrice: 500 }),
     }));
     expect(response.status).toBe(403);
     expect(await response.json()).toMatchObject({ error: { code: "TENANT_READ_ONLY" } });
-    expect(rpc).toHaveBeenCalledWith("assert_tenant_writable", { p_franchise_id: "garage-a" });
-    expect(from).not.toHaveBeenCalledWith("inventory_items");
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ franchise_id: "garage-a", shop_id: recordId }));
+    expect(rpc).not.toHaveBeenCalled();
   });
 
   it("allows only the customer to upload a repair photo when the garage is read-only", async () => {

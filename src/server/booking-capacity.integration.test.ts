@@ -2,12 +2,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { supabaseTestConfig } from "@/test/supabase-config";
 
-const hasSupabaseEnv = Boolean(
-  process.env.TEST_SUPABASE_URL?.trim() &&
-    process.env.TEST_SUPABASE_PUBLISHABLE_KEY?.trim() &&
-    process.env.TEST_SUPABASE_SECRET_KEY?.trim(),
-);
-
 const ALL_DAY_HOURS = {
   sun: { open: "00:00", close: "23:59" },
   mon: { open: "00:00", close: "23:59" },
@@ -18,7 +12,7 @@ const ALL_DAY_HOURS = {
   sat: { open: "00:00", close: "23:59" },
 };
 
-describe.skipIf(!hasSupabaseEnv)("Booking capacity concurrency (real Postgres)", () => {
+describe("Booking capacity concurrency (real Postgres)", () => {
   const timestamp = Date.now();
   const testUserEmail = `capacity_${timestamp}@example.com`;
   const testUserPassword = "SecurePassword123!";
